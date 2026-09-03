@@ -1,5 +1,4 @@
 import { writeFile } from "node:fs/promises";
-
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { app, BrowserWindow, ipcMain, net, protocol, shell } from "electron";
@@ -68,6 +67,16 @@ async function captureIfRequested(window: BrowserWindow): Promise<void> {
 }
 
 /**
+ * One PtyManager per window, so closing a window kills exactly its own shells and no
+ * others. Keyed by WebContents id because that is what every IPC event carries.
+ */
+const ptyManagers = new Map<number, PtyManager>();
+
+function managerFor(event: IpcMainEvent | IpcMainInvokeEvent): PtyManager | undefined {
+  return ptyManagers.get(event.sender.id);
+}
+
+/**
  * oikist is a single-user desktop application, but the renderer is still treated as
  * untrusted: context isolation on, node integration off, sandbox on. Everything the
  * renderer can do reaches the OS through an explicitly listed IPC channel, never
@@ -95,6 +104,8 @@ function createWindow(): BrowserWindow {
   window.once("ready-to-show", () => {
     window.show();
     void captureIfRequested(window);
+    // Regression guard for the shutdown defect below: closes the window on the normal
+    // user path so a headless run can assert the app actually exits.
     const closeAfter = Number(process.env.OIKIST_CLOSE_TEST ?? "0");
     if (closeAfter > 0) {
       setTimeout(() => window.close(), closeAfter);
@@ -122,11 +133,20 @@ function createWindow(): BrowserWindow {
   });
 
   const manager = PtyManager.forWebContents(window.webContents);
-  ptyManagers.set(window.webContents.id, manager);
+
+  // Read once, here, and never inside `closed`.
+  //
+  // By the time `closed` fires the WebContents is destroyed, and touching
+  // `window.webContents` there throws. That exception escaping the handler stopped
+  // `window-all-closed` from firing, so `shutdown()` never ran and the app never
+  // quit — it sat with four live processes indefinitely, on every quit path, whether
+  // or not a terminal had ever been opened.
+  const contentsId = window.webContents.id;
+  ptyManagers.set(contentsId, manager);
   window.on("closed", () => {
     // Shells are killed with their window rather than left running headless.
     manager.disposeAll();
-    ptyManagers.delete(window.webContents.id);
+    ptyManagers.delete(contentsId);
   });
 
   const devServer = process.env.ELECTRON_RENDERER_URL;
@@ -143,17 +163,7 @@ ipcMain.handle(IPC.runtimeInfo, (): RuntimeInfo => ({
   platform: process.platform
 }));
 
-/**
- * One PtyManager per window, so closing a window kills exactly its own shells and no
- * others. Keyed by WebContents id because that is what every IPC event carries.
- */
-const ptyManagers = new Map<number, PtyManager>();
-
-function managerFor(event: IpcMainEvent | IpcMainInvokeEvent): PtyManager | undefined {
-  return ptyManagers.get(event.sender.id);
-}
-
-ipcMain.handle(IPC.ptyCreate, (event, options: PtyCreateOptions): string => {
+ipcMain.handle(IPC.ptyCreate, async (event, options: PtyCreateOptions): Promise<string> => {
   const manager = managerFor(event);
   if (manager === undefined) {
     throw new Error("No terminal host for this window.");
@@ -186,14 +196,7 @@ void app.whenReady().then(() => {
   });
 });
 
-/**
- * Kills every shell, then asks the app to quit.
- *
- * KNOWN DEFECT: the process does not actually terminate — see
- * `docs/KNOWN-ISSUES.md`. Shell cleanup below is verified working (no orphaned
- * cmd/OpenConsole processes remain), so this is safe to call; what is unresolved is
- * Electron's own shutdown.
- */
+/** Kills every shell, then quits. */
 function shutdown(code = 0): void {
   for (const manager of ptyManagers.values()) {
     manager.disposeAll();

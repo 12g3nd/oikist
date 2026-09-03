@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 
 import type { WebContents } from "electron";
-import { spawn, type IPty } from "node-pty";
+import type { IPty, IPtyForkOptions, IWindowsPtyForkOptions } from "node-pty";
 
 import { IPC, type PtyCreateOptions } from "../shared/ipc.js";
 
@@ -32,6 +32,24 @@ interface Session {
   timer: NodeJS.Timeout | null;
 }
 
+type SpawnFn = (file: string, args: string[], options: IPtyForkOptions & IWindowsPtyForkOptions) => IPty;
+
+/**
+ * node-pty is loaded on first use, not at module load.
+ *
+ * Importing it statically pulls in a native addon during startup even when no terminal
+ * is ever opened, which costs startup time for nothing. It is cached after the first
+ * terminal so the cost is paid once.
+ */
+let spawnPty: SpawnFn | null = null;
+async function loadSpawn(): Promise<SpawnFn> {
+  if (spawnPty === null) {
+    const module = await import("node-pty");
+    spawnPty = module.spawn as SpawnFn;
+  }
+  return spawnPty;
+}
+
 /** The shell a new terminal starts. Windows-only, matching the project's scope. */
 function defaultShell(): string {
   return process.env.COMSPEC ?? "cmd.exe";
@@ -59,8 +77,9 @@ export class PtyManager {
     });
   }
 
-  create(options: PtyCreateOptions): string {
+  async create(options: PtyCreateOptions): Promise<string> {
     const id = randomUUID();
+    const spawn = await loadSpawn();
     const pty = spawn(defaultShell(), [], {
       name: "xterm-256color",
       cols: Math.max(1, Math.trunc(options.cols)),

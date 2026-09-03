@@ -1,55 +1,64 @@
 # Known issues
 
-## The app does not exit when it quits
+None open.
 
-**Status:** open, unresolved. Found at M3, 2026-09-03.
+---
 
-Closing the window (or any call to `app.quit()` / `app.exit()`) leaves four Electron
-processes running indefinitely — still alive 15+ seconds later, measured by polling
-`Get-Process electron` rather than by any wrapper's exit code.
+## Resolved
 
-Shell cleanup is **not** implicated and is verified working: `cmd`/`OpenConsole` counts
-return to their pre-launch baseline after a quit, so no terminal is orphaned.
+### The app did not exit when it quit
 
-### Ruled out, each by direct experiment
+**Found and fixed at M3, 2026-09-03.**
 
-| Suspect | Test | Result |
-|---|---|---|
-| node-pty holding the loop open | Control build with `<TerminalPane>` removed entirely | **Still hangs** — not the pty |
-| Quit method | `app.quit()`, `app.exit()`, and `process.exit()` all tried | All hang |
-| Node event-loop handles | `process.getActiveResourcesInfo()` immediately before exit | `["MessagePort","Timeout","Timeout"]` — nothing held |
-| Electron itself in this harness | Minimal app, no window | Exits in 3.2 s |
-| A BrowserWindow | Minimal app with a window | Exits in 3.0 s |
-| The `app://` custom protocol | Minimal app registering the scheme and serving over it | Exits in 3.4 s |
-| ESM main process | Minimal app with `"type": "module"` and an ESM entry | Exits in 3.5 s |
-| Renderer sandbox | Real app rebuilt with `sandbox: false` | Still hangs |
-| Quitting during startup | `OIKIST_CLOSE_TEST` closes the window on the normal user path | Still hangs |
+Closing the window — or any call to `app.quit()` / `app.exit()` — left four Electron
+processes running indefinitely, on every quit path, whether or not a terminal had ever
+been opened.
 
-`process.exit()` is **worse** than the hang and must not be used: the main process
-exits while orphaning Electron's GPU and renderer children.
+**Cause.** The window's `closed` handler read `window.webContents.id`:
 
-### What is left to investigate
-
-The difference between the minimal control (exits) and the real app (hangs) is now
-narrow: the React/xterm renderer bundle, and the `show: false` plus `ready-to-show`
-window pattern. Bisect from the real app downward rather than building the control up —
-building the control up cost several rounds and ruled out only one suspect at a time.
-
-### Impact
-
-Real, and it blocks daily-driver use: quitting leaves processes behind that accumulate
-across launches. It does not affect correctness while running — the terminal, IPC and
-shell cleanup all work.
-
-### Reproducing
-
-```
-npm run build
-OIKIST_CLOSE_TEST=2500 npx electron .
+```ts
+window.on("closed", () => {
+  manager.disposeAll();
+  ptyManagers.delete(window.webContents.id);   // throws: already destroyed
+});
 ```
 
-Then poll for `electron` processes. Do not use a wrapper's exit code or
-`Process.WaitForExit` to judge this: both reported false results during the original
-investigation, because PowerShell's `Start-Process` object reports `HasExited: True`
-while child processes survive, and PIDs get reused quickly enough to fool an id-based
-check. Poll by process **name**.
+By the time `closed` fires the WebContents is destroyed, so that access threw. The
+exception escaping the handler stopped `window-all-closed` from firing, so `shutdown()`
+never ran and nothing ever asked the app to quit. **Fix: read the id once, when the
+window is created, and close over it.**
+
+### Why it took so long, and what to do differently
+
+The cause was three lines of my own code. It took far longer than it should have, for
+reasons worth not repeating:
+
+**Measurement came last instead of first.** Three separate methods gave false readings
+before any were validated: a wrapper command's exit code, `Process.WaitForExit`, and a
+PID-based liveness check. PowerShell's `Start-Process` object reports `HasExited: True`
+while child processes survive, and Windows reuses PIDs fast enough that an id lookup
+finds an unrelated process. Only polling by process **name** against a pre-launch
+baseline was trustworthy. Several conclusions drawn from the bad readings were wrong.
+
+**Theories were implemented before they were tested.** node-pty's conout worker was
+diagnosed, "fixed" with code reaching into private internals, and given a confident
+explanatory comment — before any experiment had shown node-pty was involved. It was
+not. The fix and the comment were both removed.
+
+**`process.exit()` made things worse, not better.** It terminates the main process while
+orphaning Electron's GPU and renderer children. Never use it here.
+
+**Building a minimal control up was the slow direction.** Six separate control apps each
+ruled out one suspect (bare Electron, a window, the `app://` protocol, ESM main, preload,
+sandbox) and none of them found it. What actually worked, in two runs, was the opposite:
+replace the real app's main with a minimal one *in the real project* — which exited,
+proving the cause was in the main-process code and not the config — then add the real
+code back in cumulative levels behind one env var. Level 3 exited, level 4 hung, and the
+difference between them was three lines.
+
+**One of the "ruled out" results was itself invalid.** An early bisect branch never armed
+its window-close, so it "hung" simply because nothing had asked it to quit. A control
+that cannot pass needs checking before its failure is believed.
+
+The lesson, in order: validate the measurement, bisect the real thing downward, and do
+not write a fix until an experiment has named the cause.

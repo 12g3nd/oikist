@@ -28,7 +28,7 @@ async function until(predicate: () => boolean, label: string, timeoutMs = 15_000
 test("a shell starts and its output reaches the renderer", async () => {
   const { sent, send } = collector();
   const manager = new PtyManager(send);
-  const id = manager.create({ cols: 80, rows: 24 });
+  const id = await manager.create({ cols: 80, rows: 24 });
 
   assert.equal(typeof id, "string");
   manager.write(id, "echo oikist-pty-marker\r");
@@ -43,7 +43,7 @@ test("a shell starts and its output reaches the renderer", async () => {
 test("output is batched, so a burst is not one IPC message per read", async () => {
   const { sent, send } = collector();
   const manager = new PtyManager(send);
-  const id = manager.create({ cols: 200, rows: 50 });
+  const id = await manager.create({ cols: 200, rows: 50 });
 
   // Enough output that an unbatched implementation would send far more messages than
   // there are flush windows. The exact count is timing-dependent; the invariant is that
@@ -68,7 +68,7 @@ test("output is batched, so a burst is not one IPC message per read", async () =
 test("exit is reported, and pending output is flushed before it", async () => {
   const { sent, send } = collector();
   const manager = new PtyManager(send);
-  const id = manager.create({ cols: 80, rows: 24 });
+  const id = await manager.create({ cols: 80, rows: 24 });
 
   manager.write(id, "echo before-exit-marker\r");
   manager.write(id, "exit\r");
@@ -100,8 +100,8 @@ test("writing to, resizing, or disposing an unknown id is inert", () => {
 test("disposeAll leaves no session behind", async () => {
   const { sent, send } = collector();
   const manager = new PtyManager(send);
-  const first = manager.create({ cols: 80, rows: 24 });
-  const second = manager.create({ cols: 80, rows: 24 });
+  const first = await manager.create({ cols: 80, rows: 24 });
+  const second = await manager.create({ cols: 80, rows: 24 });
   assert.notEqual(first, second, "each shell gets its own id");
 
   manager.disposeAll();
