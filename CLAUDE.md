@@ -68,3 +68,23 @@ materially contributed to quota exhaustion. Short plans, read on demand.
   modeling, and a working `electron-vite` configuration.
 - `C:\Users\SJ\Downloads\wave-devtools` — the predecessor. Its `src/server/agents/*`
   and `src/server/sessions/*` are the domain layer that migrates into this repo.
+
+## Verifying the UI
+
+The renderer is verified by looking at it. `OIKIST_CAPTURE=<path> npx electron .` opens
+the window, photographs the app's own contents, writes a PNG and exits. Use that rather
+than a desktop screenshot — a desktop capture also photographs whatever else is on
+screen, which is both a privacy problem and an unreliable way to see the app.
+
+Renderer console messages, load failures and preload errors are forwarded to the main
+process's stdout, so a renderer that fails to boot reports why instead of presenting as
+a blank window.
+
+## Two constraints that will bite again
+
+- **The preload must build as CommonJS** (`format: "cjs"`, `index.cjs`). It runs
+  sandboxed, so `import` throws "Cannot use import statement outside a module", the
+  bridge never installs, and the window goes blank.
+- **The renderer is served over `app://`, never `file://`.** A `file://` page has an
+  opaque origin, so `script-src 'self'` in its CSP matches nothing and every module
+  script is silently blocked.
