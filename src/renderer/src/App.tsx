@@ -8,9 +8,12 @@ import {
   parseLayout,
   setActivePane,
   setActiveTab,
+  setPaneSession,
   splitTab,
   unsplitPane,
-  type LayoutState
+  wakePane,
+  type LayoutState,
+  type PaneState
 } from "../../shared/layout.js";
 import { AgentRail } from "./AgentRail.js";
 import { TerminalPane } from "./Terminal.js";
@@ -171,16 +174,49 @@ export function App(): React.JSX.Element {
                 onFocusCapture={() => apply((current) => setActivePane(current, tab.id, pane.id))}
                 onMouseDown={() => apply((current) => setActivePane(current, tab.id, pane.id))}
               >
-                <TerminalPane
-                  focused={tab.id === activeTab.id && pane.id === tab.activePaneId}
-                  {...(pane.agent === undefined ? {} : { agent: pane.agent })}
-                  onExit={() => apply((current) => unsplitPane(current, tab.id, pane.id, newId))}
-                />
+                {pane.dormant === true ? (
+                  <DormantAgent pane={pane} onResume={() => apply((current) => wakePane(current, tab.id, pane.id))} />
+                ) : (
+                  <TerminalPane
+                    focused={tab.id === activeTab.id && pane.id === tab.activePaneId}
+                    {...(pane.agent === undefined ? {} : { agent: pane.agent })}
+                    {...(pane.sessionId === undefined ? {} : { resumeSessionId: pane.sessionId })}
+                    onAgentSession={(sessionId) =>
+                      apply((current) => setPaneSession(current, tab.id, pane.id, sessionId))
+                    }
+                    onExit={() => apply((current) => unsplitPane(current, tab.id, pane.id, newId))}
+                  />
+                )}
               </div>
             ))}
           </div>
         ))}
       </main>
+    </div>
+  );
+}
+
+/**
+ * A restored agent pane, waiting to be asked.
+ *
+ * Restoring never starts an agent: launching costs quota the moment the app opens, and
+ * an agent resuming work nobody is watching is worse than one that waits. The pane says
+ * what it was and what clicking will do, so nothing happens by surprise.
+ */
+function DormantAgent({ pane, onResume }: { pane: PaneState; onResume: () => void }): React.JSX.Element {
+  const resumable = pane.sessionId !== undefined;
+  return (
+    <div className="dormant">
+      <span className="dormant-provider">{(pane.agent ?? "agent").toUpperCase()}</span>
+      <p className="dormant-note">
+        {resumable
+          ? "Not running. Its conversation is on disk and can be picked up where it stopped."
+          : "Not running. No previous session was recorded, so this starts a new one."}
+      </p>
+      <button className="dormant-action" type="button" onClick={onResume}>
+        {resumable ? "RESUME SESSION" : "START AGENT"}
+      </button>
+      {resumable && <code className="dormant-id">{pane.sessionId?.slice(0, 8)}</code>}
     </div>
   );
 }

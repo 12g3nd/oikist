@@ -10,7 +10,9 @@ import {
   setActivePane,
   setActiveTab,
   splitTab,
-  unsplitPane
+  setPaneSession,
+  unsplitPane,
+  wakePane
 } from "../src/shared/layout.js";
 
 /** Deterministic ids so assertions read plainly. */
@@ -180,4 +182,85 @@ test("an absurd number of stored tabs is capped", () => {
   }));
   const parsed = parseLayout({ version: 1, activeTabId: "t0", tabs });
   assert.ok(parsed.tabs.length <= 64, `expected a cap, got ${parsed.tabs.length}`);
+});
+
+// --- restore must never start an agent by itself ---
+
+const AGENT_SESSION = "310ff72c-7a29-4972-acc8-edb59ebee744";
+
+function storedAgentLayout(extra: Record<string, unknown> = {}) {
+  return {
+    version: 1,
+    activeTabId: "t",
+    tabs: [
+      {
+        id: "t",
+        title: "claude",
+        activePaneId: "p",
+        panes: [{ id: "p", title: "", agent: "claude", ...extra }]
+      }
+    ]
+  };
+}
+
+test("every restored agent pane is dormant, so opening the app starts nothing", () => {
+  const parsed = parseLayout(storedAgentLayout({ sessionId: AGENT_SESSION }));
+  const pane = parsed.tabs[0]!.panes[0]!;
+  assert.equal(pane.agent, "claude");
+  assert.equal(pane.dormant, true, "a restored agent must wait to be asked");
+  assert.equal(pane.sessionId, AGENT_SESSION, "so it can be resumed rather than restarted");
+});
+
+test("a dormant pane is marked dormant even when the file says otherwise", () => {
+  // The flag is not read back from disk: it is imposed. Nothing a stored file contains
+  // may cause a launch on startup.
+  const parsed = parseLayout(storedAgentLayout({ dormant: false }));
+  assert.equal(parsed.tabs[0]!.panes[0]!.dormant, true);
+});
+
+test("a stored sessionId that is not a canonical uuid is dropped", () => {
+  const parsed = parseLayout(storedAgentLayout({ sessionId: "../../etc/passwd" }));
+  assert.equal(parsed.tabs[0]!.panes[0]!.sessionId, undefined);
+});
+
+test("a shell pane is never dormant, because a shell costs nothing to start", () => {
+  const parsed = parseLayout({
+    version: 1,
+    activeTabId: "t",
+    tabs: [{ id: "t", title: "shell", activePaneId: "p", panes: [{ id: "p", title: "" }] }]
+  });
+  assert.equal(parsed.tabs[0]!.panes[0]!.dormant, undefined);
+});
+
+test("waking a pane clears dormant and nothing else", () => {
+  const parsed = parseLayout(storedAgentLayout({ sessionId: AGENT_SESSION }));
+  const woken = wakePane(parsed, "t", "p");
+  const pane = woken.tabs[0]!.panes[0]!;
+  assert.equal(pane.dormant, undefined);
+  assert.equal(pane.sessionId, AGENT_SESSION, "the session survives so it can be resumed");
+  assert.equal(pane.agent, "claude");
+});
+
+test("recording a session id leaves the rest of the layout alone", () => {
+  const next = ids("s");
+  const start = createTab(defaultLayout(next), next, "claude");
+  const tab = start.tabs[1]!;
+  const updated = setPaneSession(start, tab.id, tab.panes[0]!.id, AGENT_SESSION);
+
+  assert.equal(updated.tabs[1]!.panes[0]!.sessionId, AGENT_SESSION);
+  assert.deepEqual(updated.tabs[0], start.tabs[0], "other tabs untouched");
+});
+
+test("waking or recording against an unknown pane is inert", () => {
+  const parsed = parseLayout(storedAgentLayout());
+  assert.deepEqual(wakePane(parsed, "t", "nope"), parsed);
+  assert.deepEqual(wakePane(parsed, "nope", "p"), parsed);
+  assert.deepEqual(setPaneSession(parsed, "t", "nope", AGENT_SESSION), parsed);
+});
+
+test("a newly created agent tab is live, not dormant", () => {
+  const next = ids("n");
+  const created = createTab(defaultLayout(next), next, "claude");
+  assert.equal(created.tabs[1]!.panes[0]!.dormant, undefined, "an explicit click starts immediately");
+  assert.equal(created.tabs[1]!.panes[0]!.agent, "claude");
 });

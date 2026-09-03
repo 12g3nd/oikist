@@ -78,14 +78,21 @@ export class AgentLauncher {
    * still launched, without hooks: an agent you can see and type into is worth more
    * than no agent, and the rail reports the reduced confidence rather than pretending.
    */
-  async prepare(cwd?: string): Promise<{ sessionId: string; file: string; args: string[]; hooked: boolean }> {
+  async prepare(
+    cwd?: string,
+    resumeSessionId?: string
+  ): Promise<{ sessionId: string; file: string; args: string[]; hooked: boolean }> {
     const file = await this.#resolveExecutable("claude");
     if (file === null) {
       throw new Error("Claude was not found on PATH. Install Claude Code, or open a shell pane instead.");
     }
 
-    const sessionId = randomUUID();
-    const args = ["--session-id", sessionId];
+    // Resuming keeps the session's identity; starting fresh assigns one. Either way the
+    // id is known before the process exists, so nothing has to be recovered later.
+    const sessionId = resumeSessionId ?? randomUUID();
+    const args = resumeSessionId === undefined
+      ? ["--session-id", sessionId]
+      : ["--resume", resumeSessionId];
     let hooked = false;
 
     const nodePath = await this.#resolveNode();

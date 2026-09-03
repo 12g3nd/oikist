@@ -24,6 +24,16 @@ export interface PaneState {
   readonly title: string;
   /** Absent for a plain shell. Set when this pane runs a coding agent. */
   readonly agent?: "claude";
+  /** The agent session this pane last ran, so it can be resumed rather than restarted. */
+  readonly sessionId?: string;
+  /**
+   * True for an agent pane restored from disk and not yet started this run.
+   *
+   * Restoring must never start an agent by itself: launching burns quota the moment the
+   * app opens, and an agent quietly resuming work nobody is watching is worse than one
+   * that waits to be asked. A dormant pane shows what it was and waits for a click.
+   */
+  readonly dormant?: true;
 }
 
 export interface TabState {
@@ -89,6 +99,41 @@ export function splitTab(layout: LayoutState, tabId: string, nextId: IdFactory):
     tabs: layout.tabs.map((candidate) =>
       candidate.id === tabId
         ? { ...candidate, panes: [...candidate.panes, pane], activePaneId: pane.id }
+        : candidate
+    )
+  };
+}
+
+/** Records the agent session a pane is running, so a later restore can resume it. */
+export function setPaneSession(
+  layout: LayoutState,
+  tabId: string,
+  paneId: string,
+  sessionId: string
+): LayoutState {
+  return mapPane(layout, tabId, paneId, (pane) => ({ ...pane, sessionId }));
+}
+
+/** Wakes a dormant pane, which is what actually starts the agent. */
+export function wakePane(layout: LayoutState, tabId: string, paneId: string): LayoutState {
+  return mapPane(layout, tabId, paneId, ({ dormant: _dormant, ...pane }) => pane);
+}
+
+function mapPane(
+  layout: LayoutState,
+  tabId: string,
+  paneId: string,
+  change: (pane: PaneState) => PaneState
+): LayoutState {
+  const tab = layout.tabs.find((candidate) => candidate.id === tabId);
+  if (tab === undefined || !tab.panes.some((pane) => pane.id === paneId)) {
+    return layout;
+  }
+  return {
+    ...layout,
+    tabs: layout.tabs.map((candidate) =>
+      candidate.id === tabId
+        ? { ...candidate, panes: candidate.panes.map((pane) => (pane.id === paneId ? change(pane) : pane)) }
         : candidate
     )
   };
@@ -160,10 +205,23 @@ function readPane(value: unknown): PaneState | null {
     return null;
   }
   // Only a known provider survives the read; anything else becomes a plain shell.
-  return value.agent === "claude"
-    ? { id: value.id, title: readString(value.title, ""), agent: "claude" }
-    : { id: value.id, title: readString(value.title, "") };
+  if (value.agent !== "claude") {
+    return { id: value.id, title: readString(value.title, "") };
+  }
+  // Every restored agent pane is dormant, without exception. This is the single point
+  // that guarantees opening the app never starts an agent.
+  return {
+    id: value.id,
+    title: readString(value.title, ""),
+    agent: "claude",
+    dormant: true,
+    ...(typeof value.sessionId === "string" && UUID.test(value.sessionId)
+      ? { sessionId: value.sessionId }
+      : {})
+  };
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function readTab(value: unknown): TabState | null {
   if (!isRecord(value) || typeof value.id !== "string" || value.id === "") {

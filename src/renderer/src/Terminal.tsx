@@ -28,6 +28,10 @@ interface TerminalPaneProps {
   readonly focused: boolean;
   /** Absent for a plain shell; set to run a coding agent in this pane. */
   readonly agent?: "claude";
+  /** Resume this agent session rather than starting a new one. */
+  readonly resumeSessionId?: string;
+  /** Reports the agent session this pane ended up running, so it can be resumed later. */
+  readonly onAgentSession?: (sessionId: string) => void;
   readonly onExit?: (exitCode: number) => void;
 }
 
@@ -38,7 +42,13 @@ interface TerminalPaneProps {
  * canvas and a WebGL context, and letting React's render cycle recreate it would
  * destroy and re-establish the GPU context on every parent update.
  */
-export function TerminalPane({ focused, agent, onExit }: TerminalPaneProps): React.JSX.Element {
+export function TerminalPane({
+  focused,
+  agent,
+  resumeSessionId,
+  onAgentSession,
+  onExit
+}: TerminalPaneProps): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Xterm | null>(null);
 
@@ -50,6 +60,8 @@ export function TerminalPane({ focused, agent, onExit }: TerminalPaneProps): Rea
   // the rail. The pane must be created exactly once per pane identity.
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
+  const onAgentSessionRef = useRef(onAgentSession);
+  onAgentSessionRef.current = onAgentSession;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -107,17 +119,25 @@ export function TerminalPane({ focused, agent, onExit }: TerminalPaneProps): Rea
 
     const request = agent === undefined
       ? { cols: term.cols, rows: term.rows }
-      : { cols: term.cols, rows: term.rows, agent };
-    void window.oikist.pty.create(request).then((id) => {
+      : {
+          cols: term.cols,
+          rows: term.rows,
+          agent,
+          ...(resumeSessionId === undefined ? {} : { resumeSessionId })
+        };
+    void window.oikist.pty.create(request).then((created) => {
       if (disposed) {
         // The pane unmounted while the shell was starting; do not leave it running.
-        window.oikist.pty.dispose(id);
+        window.oikist.pty.dispose(created.id);
         return;
       }
-      ptyId = id;
+      ptyId = created.id;
+      if (created.agentSessionId !== undefined) {
+        onAgentSessionRef.current?.(created.agentSessionId);
+      }
       // Keystrokes typed before the shell existed are replayed rather than dropped.
       for (const queued of pending) {
-        window.oikist.pty.write(id, queued);
+        window.oikist.pty.write(created.id, queued);
       }
       pending.length = 0;
     }).catch((error: unknown) => {
@@ -165,7 +185,7 @@ export function TerminalPane({ focused, agent, onExit }: TerminalPaneProps): Rea
       term.dispose();
       termRef.current = null;
     };
-  }, [agent]);
+  }, [agent, resumeSessionId]);
 
   useEffect(() => {
     if (focused) {

@@ -35,6 +35,14 @@ export interface PtyCreateOptions {
   readonly rows: number;
   /** Absent for a plain shell; set to run a coding agent in this pane instead. */
   readonly agent?: "claude";
+  /** Resume this agent session instead of starting a new one. */
+  readonly resumeSessionId?: string;
+}
+
+export interface PtyCreated {
+  readonly id: string;
+  /** Present for an agent pane: the session the rail will show. */
+  readonly agentSessionId?: string;
 }
 
 export interface PtyDataMessage {
@@ -48,7 +56,7 @@ export interface PtyExitMessage {
 }
 
 export interface PtyBridge {
-  readonly create: (options: PtyCreateOptions) => Promise<string>;
+  readonly create: (options: PtyCreateOptions) => Promise<PtyCreated>;
   readonly write: (id: string, data: string) => void;
   readonly resize: (id: string, cols: number, rows: number) => void;
   readonly dispose: (id: string) => void;

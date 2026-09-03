@@ -7,6 +7,7 @@ import {
   type PtyDataMessage,
   type PtyExitMessage,
   type AgentsSnapshot,
+  type PtyCreated,
   type RuntimeInfo
 } from "../shared/ipc.js";
 
@@ -33,7 +34,7 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 const bridge: OikistBridge = {
   runtimeInfo: () => ipcRenderer.invoke(IPC.runtimeInfo) as Promise<RuntimeInfo>,
   pty: {
-    create: (options: PtyCreateOptions) => ipcRenderer.invoke(IPC.ptyCreate, options) as Promise<string>,
+    create: (options: PtyCreateOptions) => ipcRenderer.invoke(IPC.ptyCreate, options) as Promise<PtyCreated>,
     write: (id, data) => ipcRenderer.send(IPC.ptyWrite, { id, data }),
     resize: (id, cols, rows) => ipcRenderer.send(IPC.ptyResize, { id, cols, rows }),
     dispose: (id) => ipcRenderer.send(IPC.ptyDispose, { id }),

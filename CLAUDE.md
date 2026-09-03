@@ -149,3 +149,17 @@ stops being believed the first time it is wrong.
   still closing and trips a libuv assertion. `tests/pty.test.ts` needs it (node-pty
   never releases the loop); anything using `fetch` will crash under it, so those tests
   use `node:http` with `agent: false`.
+
+## Restore never starts an agent
+
+`parseLayout` marks **every** restored agent pane `dormant`, unconditionally — the flag
+is imposed, not read back from the file, so nothing a stored layout contains can cause a
+launch on startup. A dormant pane renders a card saying what it was, with the session id
+it can resume, and starts only when clicked.
+
+This is a hard rule, not a preference. Launching on restore spends quota the moment the
+app opens, and an agent resuming work nobody is watching is worse than one that waits.
+Verified by measurement rather than by reading: restoring an agent pane leaves the
+`claude` process count unchanged.
+
+A shell pane is never dormant — a shell costs nothing to start.

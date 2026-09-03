@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { app, BrowserWindow, ipcMain, net, protocol, shell } from "electron";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 
-import { IPC, type PtyCreateOptions, type RuntimeInfo } from "../shared/ipc.js";
+import { IPC, type PtyCreateOptions, type PtyCreated, type RuntimeInfo } from "../shared/ipc.js";
 import { resolveRendererPath } from "../shared/renderer-path.js";
 import { mergeAgents } from "../shared/agents.js";
 import { AgentDiscovery } from "./agents/discovery.js";
@@ -200,22 +200,22 @@ ipcMain.handle(IPC.runtimeInfo, (): RuntimeInfo => ({
   platform: process.platform
 }));
 
-ipcMain.handle(IPC.ptyCreate, async (event, options: PtyCreateOptions): Promise<string> => {
+ipcMain.handle(IPC.ptyCreate, async (event, options: PtyCreateOptions): Promise<PtyCreated> => {
   const manager = managerFor(event);
   if (manager === undefined) {
     throw new Error("No terminal host for this window.");
   }
   if (options.agent !== "claude" || launcher === null) {
-    return manager.create(options);
+    return { id: await manager.create(options) };
   }
 
-  const launch = await launcher.prepare(options.cwd);
+  const launch = await launcher.prepare(options.cwd, options.resumeSessionId);
   const id = await manager.create(options, { file: launch.file, args: launch.args });
   agentSessionForPty.set(id, launch.sessionId);
   // The pane appears in the rail immediately, before its first hook, so launching an
   // agent has visible effect rather than a second of nothing.
   publishAgents();
-  return id;
+  return { id, agentSessionId: launch.sessionId };
 });
 
 ipcMain.on(IPC.ptyWrite, (event, { id, data }: { id: string; data: string }) => {

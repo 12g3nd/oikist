@@ -1,7 +1,7 @@
 # oikist — Design Decisions
 
-**Status:** M4 complete — terminal, tabs, split, layout restore, and an agent rail fed by
-both discovery and per-launch hooks.
+**Status:** M5 complete — terminal, tabs, split, layout restore, an agent rail fed by both
+discovery and per-launch hooks, and dormant restore with explicit resume.
 **Recorded:** 2026-09-03
 
 This is the decision record for oikist, a Windows-only, agent-native development
@@ -258,7 +258,7 @@ project dies is building feature 12 of 40 forever and never switching off Wave.
 | **M2** | ~~Repo init~~ **done 2026-09-03** | electron-vite, React 19, sandboxed renderer over `app://` |
 | **M3** | ~~Terminal, tabs, 2-up split, JSON layout~~ **done 2026-09-03** | Batched pty output; layout restored on launch |
 | **M4** | ~~Agent rail, owned launch, hooks~~ **done 2026-09-03** | Launched agents report state; attached ones are labelled |
-| **M5** | Restore | |
+| **M5** | ~~Restore~~ **done 2026-09-03** | Agent panes restore dormant; explicit resume, never automatic |
 | **M6** | Read-only file viewer | |
 | **M7** | Routing + handoff, full | Cheap manual half ships in M1 |
 | **M8** | Subagent indicator | |

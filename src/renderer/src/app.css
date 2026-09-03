@@ -296,3 +296,46 @@ body {
   min-height: 0;
   overflow: hidden;
 }
+
+/* A dormant agent pane. Quiet by design: it is a thing not happening, and it should not
+   compete with a live terminal for attention. */
+.dormant {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  height: 100%;
+  padding: 24px;
+}
+
+.dormant-provider {
+  color: var(--fg-dim);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+}
+
+.dormant-note {
+  margin: 0;
+  max-width: 46ch;
+  color: var(--fg-dim);
+  line-height: 1.5;
+}
+
+.dormant-action {
+  padding: 7px 14px;
+  border: 1px solid var(--accent);
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.dormant-action:hover { background: #14302d; }
+.dormant-action:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+
+.dormant-id {
+  color: var(--fg-dim);
+  font-size: 10px;
+}
