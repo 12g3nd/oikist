@@ -11,6 +11,7 @@ import { AgentDiscovery } from "./agents/discovery.js";
 import { startHookServer, type HookServer } from "./agents/hook-server.js";
 import { AgentLauncher } from "./agents/launcher.js";
 import { LayoutStore, type WindowBounds } from "./layout-store.js";
+import { listDirectory, readTextFile } from "./files.js";
 import { PtyManager } from "./pty.js";
 
 /**
@@ -62,6 +63,18 @@ async function captureIfRequested(window: BrowserWindow): Promise<void> {
     // is adjustable rather than a constant that quietly photographs the wrong moment.
     const settleMs = Number(process.env.OIKIST_CAPTURE_DELAY ?? "700");
     await new Promise((resolve) => setTimeout(resolve, Number.isFinite(settleMs) ? settleMs : 700));
+
+    // Optionally drive the UI before the shutter. Verifying a view that only appears
+    // after a click otherwise means photographing the state before the interesting part
+    // happens, which is how the terminal pane got declared working while blank.
+    const clickSelector = process.env.OIKIST_CLICK;
+    if (clickSelector !== undefined && clickSelector !== "") {
+      const clicked: unknown = await window.webContents.executeJavaScript(
+        `(() => { const el = document.querySelector(${JSON.stringify(clickSelector)}); if (el instanceof HTMLElement) { el.click(); return true; } return false; })()`
+      );
+      console.log(`[click] ${clickSelector} -> ${clicked === true ? "clicked" : "NO MATCH"}`);
+      await new Promise((resolve) => setTimeout(resolve, 900));
+    }
     const image = await window.webContents.capturePage();
     await writeFile(target, image.toPNG());
     console.log(`captured ${target}`);
@@ -281,6 +294,11 @@ function publishAgents(): void {
 const discovery = new AgentDiscovery({ onResult: () => publishAgents() });
 
 ipcMain.handle(IPC.agentsList, () => snapshot());
+
+// The viewer is read-only: there is no write, rename, or delete channel to reach for.
+ipcMain.handle(IPC.filesHome, () => app.getPath("home"));
+ipcMain.handle(IPC.filesList, (_event, path: string) => listDirectory(path));
+ipcMain.handle(IPC.filesRead, (_event, path: string) => readTextFile(path));
 
 ipcMain.handle(IPC.layoutLoad, async (): Promise<unknown> => (await layoutStore?.load())?.layout);
 

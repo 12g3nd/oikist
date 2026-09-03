@@ -1,4 +1,5 @@
 import type { AgentSummary } from "./agents.js";
+import type { FileContent, FileEntry } from "./files.js";
 
 /**
  * The contract between the main process and the renderer.
@@ -23,6 +24,10 @@ export const IPC = {
 
   layoutLoad: "layout:load",
   layoutSave: "layout:save",
+
+  filesList: "files:list",
+  filesRead: "files:read",
+  filesHome: "files:home",
 
   agentsList: "agents:list",
   /** Main to renderer, once per discovery pass. */
@@ -82,6 +87,11 @@ export interface OikistBridge {
     readonly load: () => Promise<unknown>;
     readonly save: (layout: unknown) => void;
   };
+  readonly files: {
+    readonly home: () => Promise<string>;
+    readonly list: (path: string) => Promise<DirectoryListing>;
+    readonly read: (path: string) => Promise<FileContent>;
+  };
   readonly agents: {
     readonly list: () => Promise<AgentsSnapshot>;
     readonly onUpdate: (listener: (snapshot: AgentsSnapshot) => void) => () => void;
@@ -94,4 +104,10 @@ export interface AgentsSnapshot {
   readonly ok: boolean;
   readonly error?: string;
   readonly refreshedAt: string;
+}
+
+export interface DirectoryListing {
+  readonly path: string;
+  readonly entries: readonly FileEntry[];
+  readonly truncated: boolean;
 }

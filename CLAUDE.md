@@ -142,9 +142,14 @@ stops being believed the first time it is wrong.
 - **The hook relay must run under real Node, not Electron.** `process.execPath` is
   `electron.exe`, which behaves as Node only with an env var a hook definition cannot
   set, so the launcher resolves `node` from PATH.
-- **Never put an inline callback in a terminal effect's dependency array.** `onExit` as
-  a dependency made the pane tear down and recreate its pty on every parent render,
-  which spawned duplicate shells and duplicate rail rows. Hold it in a ref.
+- **Never put a caller's inline callback in an effect's dependency array.** This has
+  bitten twice. `onExit` on the terminal recreated the pty on every parent render,
+  spawning duplicate shells and duplicate rail rows; `onPathChange` on the file viewer
+  re-ran its effect and cleared the file being read, so opening a file looked like
+  nothing happening. Hold the callback in a ref and keep it out of the deps.
+- **A no-op state change must return the identical object.** A reducer that rebuilds
+  the layout for an unchanged value makes a component that reports state upward loop
+  forever: report, re-render, report again.
 - **`--test-force-exit` is not free on Windows.** It kills the process while handles are
   still closing and trips a libuv assertion. `tests/pty.test.ts` needs it (node-pty
   never releases the loop); anything using `fetch` will crash under it, so those tests

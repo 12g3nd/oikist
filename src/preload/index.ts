@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 
+import type { FileContent } from "../shared/files.js";
 import {
   IPC,
   type OikistBridge,
@@ -7,6 +8,7 @@ import {
   type PtyDataMessage,
   type PtyExitMessage,
   type AgentsSnapshot,
+  type DirectoryListing,
   type PtyCreated,
   type RuntimeInfo
 } from "../shared/ipc.js";
@@ -44,6 +46,11 @@ const bridge: OikistBridge = {
   layout: {
     load: () => ipcRenderer.invoke(IPC.layoutLoad) as Promise<unknown>,
     save: (layout: unknown) => ipcRenderer.send(IPC.layoutSave, layout)
+  },
+  files: {
+    home: () => ipcRenderer.invoke(IPC.filesHome) as Promise<string>,
+    list: (path: string) => ipcRenderer.invoke(IPC.filesList, path) as Promise<DirectoryListing>,
+    read: (path: string) => ipcRenderer.invoke(IPC.filesRead, path) as Promise<FileContent>
   },
   agents: {
     list: () => ipcRenderer.invoke(IPC.agentsList) as Promise<AgentsSnapshot>,

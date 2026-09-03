@@ -1,7 +1,7 @@
 # oikist — Design Decisions
 
-**Status:** M5 complete — terminal, tabs, split, layout restore, an agent rail fed by both
-discovery and per-launch hooks, and dormant restore with explicit resume.
+**Status:** M6 complete. Four of the six switch-bar items are met; routing/handoff (M7)
+and subagents (M8) remain.
 **Recorded:** 2026-09-03
 
 This is the decision record for oikist, a Windows-only, agent-native development
@@ -259,7 +259,7 @@ project dies is building feature 12 of 40 forever and never switching off Wave.
 | **M3** | ~~Terminal, tabs, 2-up split, JSON layout~~ **done 2026-09-03** | Batched pty output; layout restored on launch |
 | **M4** | ~~Agent rail, owned launch, hooks~~ **done 2026-09-03** | Launched agents report state; attached ones are labelled |
 | **M5** | ~~Restore~~ **done 2026-09-03** | Agent panes restore dormant; explicit resume, never automatic |
-| **M6** | Read-only file viewer | |
+| **M6** | ~~Read-only file viewer~~ **done 2026-09-03** | Bounded reads, binaries refused, no write channel exists |
 | **M7** | Routing + handoff, full | Cheap manual half ships in M1 |
 | **M8** | Subagent indicator | |
 

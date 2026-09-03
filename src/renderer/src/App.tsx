@@ -8,6 +8,7 @@ import {
   parseLayout,
   setActivePane,
   setActiveTab,
+  setPanePath,
   setPaneSession,
   splitTab,
   unsplitPane,
@@ -16,6 +17,7 @@ import {
   type PaneState
 } from "../../shared/layout.js";
 import { AgentRail } from "./AgentRail.js";
+import { FileViewer } from "./FileViewer.js";
 import { TerminalPane } from "./Terminal.js";
 
 const newId = (): string => crypto.randomUUID();
@@ -154,6 +156,14 @@ export function App(): React.JSX.Element {
           >
             + CLAUDE
           </button>
+          <button
+            className="tabbar-action tabbar-action--files"
+            type="button"
+            onClick={() => apply((current) => createTab(current, newId, "files"))}
+            title="Read files — read-only"
+          >
+            + FILES
+          </button>
         </div>
 
         {/*
@@ -174,7 +184,12 @@ export function App(): React.JSX.Element {
                 onFocusCapture={() => apply((current) => setActivePane(current, tab.id, pane.id))}
                 onMouseDown={() => apply((current) => setActivePane(current, tab.id, pane.id))}
               >
-                {pane.dormant === true ? (
+                {pane.view === "files" ? (
+                  <FileViewer
+                    {...(pane.path === undefined ? {} : { path: pane.path })}
+                    onPathChange={(next) => apply((current) => setPanePath(current, tab.id, pane.id, next))}
+                  />
+                ) : pane.dormant === true ? (
                   <DormantAgent pane={pane} onResume={() => apply((current) => wakePane(current, tab.id, pane.id))} />
                 ) : (
                   <TerminalPane

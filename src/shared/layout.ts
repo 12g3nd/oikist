@@ -24,6 +24,10 @@ export interface PaneState {
   readonly title: string;
   /** Absent for a plain shell. Set when this pane runs a coding agent. */
   readonly agent?: "claude";
+  /** Absent for a terminal. Set when this pane shows something else. */
+  readonly view?: "files";
+  /** The directory a file pane is browsing, so it reopens where it was. */
+  readonly path?: string;
   /** The agent session this pane last ran, so it can be resumed rather than restarted. */
   readonly sessionId?: string;
   /**
@@ -49,22 +53,28 @@ export interface LayoutState {
   readonly activeTabId: string | null;
 }
 
-function newPane(nextId: IdFactory, agent?: "claude"): PaneState {
-  return agent === undefined ? { id: nextId(), title: "" } : { id: nextId(), title: "", agent };
+export type PaneKind = "shell" | "claude" | "files";
+
+function newPane(nextId: IdFactory, kind: PaneKind): PaneState {
+  const id = nextId();
+  if (kind === "claude") {
+    return { id, title: "", agent: "claude" };
+  }
+  return kind === "files" ? { id, title: "", view: "files" } : { id, title: "" };
 }
 
-function newTab(nextId: IdFactory, agent?: "claude"): TabState {
-  const pane = newPane(nextId, agent);
-  return { id: nextId(), title: agent ?? "shell", panes: [pane], activePaneId: pane.id };
+function newTab(nextId: IdFactory, kind: PaneKind): TabState {
+  const pane = newPane(nextId, kind);
+  return { id: nextId(), title: kind, panes: [pane], activePaneId: pane.id };
 }
 
 export function defaultLayout(nextId: IdFactory): LayoutState {
-  const tab = newTab(nextId);
+  const tab = newTab(nextId, "shell");
   return { version: LAYOUT_VERSION, tabs: [tab], activeTabId: tab.id };
 }
 
-export function createTab(layout: LayoutState, nextId: IdFactory, agent?: "claude"): LayoutState {
-  const tab = newTab(nextId, agent);
+export function createTab(layout: LayoutState, nextId: IdFactory, kind: PaneKind = "shell"): LayoutState {
+  const tab = newTab(nextId, kind);
   return { ...layout, tabs: [...layout.tabs, tab], activeTabId: tab.id };
 }
 
@@ -93,7 +103,7 @@ export function splitTab(layout: LayoutState, tabId: string, nextId: IdFactory):
   if (tab === undefined || tab.panes.length >= MAX_PANES_PER_TAB) {
     return layout;
   }
-  const pane = newPane(nextId);
+  const pane = newPane(nextId, "shell");
   return {
     ...layout,
     tabs: layout.tabs.map((candidate) =>
@@ -114,6 +124,11 @@ export function setPaneSession(
   return mapPane(layout, tabId, paneId, (pane) => ({ ...pane, sessionId }));
 }
 
+/** Remembers where a file pane is browsing. */
+export function setPanePath(layout: LayoutState, tabId: string, paneId: string, path: string): LayoutState {
+  return mapPane(layout, tabId, paneId, (pane) => (pane.path === path ? pane : { ...pane, path }));
+}
+
 /** Wakes a dormant pane, which is what actually starts the agent. */
 export function wakePane(layout: LayoutState, tabId: string, paneId: string): LayoutState {
   return mapPane(layout, tabId, paneId, ({ dormant: _dormant, ...pane }) => pane);
@@ -129,11 +144,19 @@ function mapPane(
   if (tab === undefined || !tab.panes.some((pane) => pane.id === paneId)) {
     return layout;
   }
+  const pane = tab.panes.find((candidate) => candidate.id === paneId)!;
+  const changed = change(pane);
+  // Identity matters, not just equality. Returning a fresh object for a no-op change
+  // makes every consumer re-render, which for a component that reports its own state
+  // back up is an endless loop: report, re-render, report again.
+  if (changed === pane) {
+    return layout;
+  }
   return {
     ...layout,
     tabs: layout.tabs.map((candidate) =>
       candidate.id === tabId
-        ? { ...candidate, panes: candidate.panes.map((pane) => (pane.id === paneId ? change(pane) : pane)) }
+        ? { ...candidate, panes: candidate.panes.map((existing) => (existing.id === paneId ? changed : existing)) }
         : candidate
     )
   };
@@ -203,6 +226,14 @@ function readString(value: unknown, fallback: string): string {
 function readPane(value: unknown): PaneState | null {
   if (!isRecord(value) || typeof value.id !== "string" || value.id === "") {
     return null;
+  }
+  if (value.view === "files") {
+    return {
+      id: value.id,
+      title: readString(value.title, ""),
+      view: "files",
+      ...(typeof value.path === "string" && value.path !== "" ? { path: value.path } : {})
+    };
   }
   // Only a known provider survives the read; anything else becomes a plain shell.
   if (value.agent !== "claude") {

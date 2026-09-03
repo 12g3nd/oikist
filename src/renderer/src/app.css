@@ -257,6 +257,11 @@ body {
 
 .tabbar-action:hover:not(:disabled) { color: var(--accent); }
 
+.tabbar-action--files {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+
 .tabbar-action--agent {
   margin-left: auto;
   font-size: 10px;
@@ -338,4 +343,149 @@ body {
 .dormant-id {
   color: var(--fg-dim);
   font-size: 10px;
+}
+
+/* --- file viewer --- */
+
+.files {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: 6px;
+}
+
+.files-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.files-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Crumbs read as one path, so the separator is drawn between them rather than each
+   being a discrete button-looking thing. */
+.files-crumb + .files-crumb::before {
+  content: "\\";
+  color: var(--fg-dim);
+  margin: 0 3px 0 1px;
+}
+
+.files-crumb {
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.files-crumb:hover { color: var(--accent); }
+.files-crumb:focus-visible { outline: 1px solid var(--accent); }
+
+.files-up {
+  margin-left: auto;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--fg-dim);
+  font: inherit;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.files-up:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.files-up:disabled { opacity: 0.3; cursor: default; }
+
+.files-error {
+  flex: none;
+  margin: 0;
+  padding: 5px 8px;
+  border-left: 2px solid var(--danger);
+  color: var(--danger);
+  font-size: 11px;
+}
+
+.files-body {
+  display: grid;
+  grid-template-columns: minmax(160px, 260px) 1fr;
+  gap: 1px;
+  flex: 1;
+  min-height: 0;
+  background: var(--border);
+}
+
+.files-list {
+  margin: 0;
+  padding: 2px 0;
+  list-style: none;
+  overflow-y: auto;
+  background: var(--bg);
+  scrollbar-width: thin;
+}
+
+.files-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 3px 8px;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.files-entry:hover { background: #1a201e; color: var(--fg); }
+.files-entry:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.files-entry--directory .files-name { color: var(--fg); }
+.files-entry--directory .files-name::after { content: "\\"; color: var(--fg-dim); }
+.files-entry--open { background: #16211f; color: var(--accent); }
+
+.files-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.files-size {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.files-content {
+  overflow: auto;
+  background: var(--bg);
+  padding: 8px 10px;
+  min-width: 0;
+  scrollbar-width: thin;
+}
+
+.files-note {
+  margin: 0 0 6px;
+  color: var(--fg-dim);
+  font-size: 11px;
+}
+
+.files-text {
+  margin: 0;
+  white-space: pre;
+  font-size: 12px;
+  line-height: 1.45;
+  tab-size: 2;
 }
