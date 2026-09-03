@@ -17,7 +17,10 @@ export const IPC = {
   /** Main to renderer. Batched, so one message carries many pty reads. */
   ptyData: "pty:data",
   /** Main to renderer, once per pty. */
-  ptyExit: "pty:exit"
+  ptyExit: "pty:exit",
+
+  layoutLoad: "layout:load",
+  layoutSave: "layout:save"
 } as const;
 
 export interface PtyCreateOptions {
@@ -58,4 +61,9 @@ export interface RuntimeInfo {
 export interface OikistBridge {
   readonly runtimeInfo: () => Promise<RuntimeInfo>;
   readonly pty: PtyBridge;
+  readonly layout: {
+    /** Raw stored value. The renderer validates it with `parseLayout`. */
+    readonly load: () => Promise<unknown>;
+    readonly save: (layout: unknown) => void;
+  };
 }

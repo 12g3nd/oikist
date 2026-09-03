@@ -23,6 +23,15 @@
   box-sizing: border-box;
 }
 
+/*
+ * The `hidden` attribute works by a UA rule of `display: none`, which any explicit
+ * `display` in this stylesheet outranks. `.panes` sets `display: grid`, so a hidden tab
+ * kept rendering — its terminal appeared stacked below the visible one.
+ */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -66,87 +75,116 @@ body {
 .main {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 26px 28px;
   min-height: 0;
   overflow: hidden;
 }
 
-.head h1 {
-  margin: 0;
-  font-size: 28px;
-  font-weight: 600;
-  letter-spacing: -0.03em;
-}
-
-.tagline {
-  margin: 4px 0 0;
-  color: var(--fg-dim);
-}
-
-.panel {
-  padding: 16px 18px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.panel h2 {
-  margin: 0 0 10px;
-  color: var(--fg-dim);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
-.kv {
+.shell--loading {
   display: grid;
-  grid-template-columns: 92px 1fr;
-  gap: 2px 14px;
-  margin: 0;
-}
-
-.kv dt {
+  place-items: center;
   color: var(--fg-dim);
 }
 
-.kv dd {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-}
+/* --- tabs --- */
 
-.ladder {
+.tabbar {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  color: var(--fg-dim);
+  align-items: stretch;
+  gap: 1px;
+  flex: none;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
-.rung {
-  display: inline-block;
-  min-width: 30px;
-  color: var(--accent);
-}
-
-.dim {
-  margin: 0;
-  color: var(--fg-dim);
-}
-
-.error {
-  margin: 0;
-  color: var(--danger);
-}
-
-.panel--term {
+.tab {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px 7px 14px;
+  min-width: 0;
+  max-width: 220px;
+  color: var(--fg-dim);
+  cursor: default;
+  /* The active tab is marked by a top rule and a lighter ground rather than a border on
+     all sides, so a row of tabs reads as one strip instead of a row of separate cards. */
+  border-top: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.tab:hover { color: var(--fg); }
+
+.tab:focus-visible {
+  outline: none;
+  border-top-color: var(--accent);
+  color: var(--fg);
+}
+
+.tab--active {
+  background: var(--bg);
+  border-top-color: var(--accent);
+  color: var(--fg);
+}
+
+.tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.tab-split { color: var(--accent); font-size: 11px; }
+
+.tab-close {
+  border: 0;
+  background: none;
+  padding: 0 2px;
+  color: var(--fg-dim);
+  cursor: pointer;
+  line-height: 1;
+  opacity: 0;
+}
+
+.tab:hover .tab-close,
+.tab--active .tab-close { opacity: 1; }
+.tab-close:hover { color: var(--danger); }
+.tab-close:focus-visible { outline: 1px solid var(--accent); opacity: 1; }
+
+.tabbar-action {
+  border: 0;
+  background: none;
+  padding: 0 12px;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+
+.tabbar-action:hover:not(:disabled) { color: var(--accent); }
+.tabbar-action:disabled { opacity: 0.3; cursor: default; }
+.tabbar-action:focus-visible { outline: 1px solid var(--accent); outline-offset: -2px; }
+
+/* --- panes --- */
+
+.panes {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1px;
   flex: 1;
-  min-height: 260px;
+  min-height: 0;
+  background: var(--border);
 }
+
+.panes--split { grid-template-columns: 1fr 1fr; }
+
+.pane {
+  min-width: 0;
+  min-height: 0;
+  padding: 6px 8px;
+  background: var(--bg);
+  /* Only meaningful in a split, where it answers "which half takes my typing". */
+  border-left: 2px solid transparent;
+}
+
+.pane--focused { border-left-color: var(--accent); }
 
 /* xterm measures itself against this box, so it must have real height before fit(). */
 .term-host {

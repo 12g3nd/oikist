@@ -38,6 +38,10 @@ const bridge: OikistBridge = {
     dispose: (id) => ipcRenderer.send(IPC.ptyDispose, { id }),
     onData: (listener) => subscribe<PtyDataMessage>(IPC.ptyData, listener),
     onExit: (listener) => subscribe<PtyExitMessage>(IPC.ptyExit, listener)
+  },
+  layout: {
+    load: () => ipcRenderer.invoke(IPC.layoutLoad) as Promise<unknown>,
+    save: (layout: unknown) => ipcRenderer.send(IPC.layoutSave, layout)
   }
 };
 

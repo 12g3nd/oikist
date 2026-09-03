@@ -100,3 +100,21 @@ PIDs fast enough that an id-based check finds an unrelated process. Poll by proc
 `OIKIST_CLOSE_TEST=<ms> npx electron .` closes the window on the normal user path, so a
 headless run can assert the app actually exits. `docs/KNOWN-ISSUES.md` records why this
 guard exists and how the original defect was found.
+
+## Layout and persistence
+
+`src/shared/layout.ts` holds the tab/pane model as pure reducers — no React, no
+Electron, no filesystem — so it is fully unit tested. `parseLayout` treats stored state
+as untrusted: it repairs dangling ids, drops duplicates, caps tab counts, and never
+throws. A corrupt file must cost the tab arrangement, never the ability to open the app.
+
+State is written **when it changes**, never in a quit handler, debounced and atomically
+(temp file + rename) in `src/main/layout-store.ts`.
+
+Two traps already hit here, both worth remembering:
+
+- **Strip a leading BOM before `JSON.parse`.** Editors and PowerShell's `-Encoding utf8`
+  write one, and it makes the parse throw — which silently resets the layout.
+- **`[hidden]` needs `display: none !important`.** The attribute works through a UA rule
+  that any explicit `display` in our stylesheet outranks, so a hidden tab kept rendering
+  its terminal below the visible one.

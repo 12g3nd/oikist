@@ -6,6 +6,7 @@ import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 
 import { IPC, type PtyCreateOptions, type RuntimeInfo } from "../shared/ipc.js";
 import { resolveRendererPath } from "../shared/renderer-path.js";
+import { LayoutStore, type WindowBounds } from "./layout-store.js";
 import { PtyManager } from "./pty.js";
 
 /**
@@ -72,6 +73,25 @@ async function captureIfRequested(window: BrowserWindow): Promise<void> {
  */
 const ptyManagers = new Map<number, PtyManager>();
 
+/** Created once app paths are available, so `app.getPath` has a real answer. */
+let layoutStore: LayoutStore | null = null;
+
+/**
+ * Remembers where the window was.
+ *
+ * Read from the *normal* bounds rather than the current ones, so a maximized window
+ * restores to a sensible size when it is later unmaximized instead of to the full
+ * screen it happened to occupy at quit.
+ */
+function rememberBounds(window: BrowserWindow): void {
+  if (window.isDestroyed() || window.isMinimized()) {
+    return;
+  }
+  const { width, height, x, y } = window.getNormalBounds();
+  const bounds: WindowBounds = { width, height, x, y, maximized: window.isMaximized() };
+  layoutStore?.setWindow(bounds);
+}
+
 function managerFor(event: IpcMainEvent | IpcMainInvokeEvent): PtyManager | undefined {
   return ptyManagers.get(event.sender.id);
 }
@@ -82,10 +102,11 @@ function managerFor(event: IpcMainEvent | IpcMainInvokeEvent): PtyManager | unde
  * renderer can do reaches the OS through an explicitly listed IPC channel, never
  * through an ambient Node global.
  */
-function createWindow(): BrowserWindow {
+function createWindow(stored?: WindowBounds): BrowserWindow {
   const window = new BrowserWindow({
-    width: 1280,
-    height: 820,
+    width: stored?.width ?? 1280,
+    height: stored?.height ?? 820,
+    ...(stored?.x !== undefined && stored.y !== undefined ? { x: stored.x, y: stored.y } : {}),
     minWidth: 800,
     minHeight: 500,
     show: false,
@@ -102,6 +123,9 @@ function createWindow(): BrowserWindow {
   // Shown only once the first frame is painted, so startup never flashes an empty
   // white window before the shell renders.
   window.once("ready-to-show", () => {
+    if (stored?.maximized === true) {
+      window.maximize();
+    }
     window.show();
     void captureIfRequested(window);
     // Regression guard for the shutdown defect below: closes the window on the normal
@@ -149,6 +173,13 @@ function createWindow(): BrowserWindow {
     ptyManagers.delete(contentsId);
   });
 
+  // Debounced inside the store, so a drag writes once rather than once per frame.
+  const remember = (): void => rememberBounds(window);
+  window.on("resize", remember);
+  window.on("move", remember);
+  window.on("maximize", remember);
+  window.on("unmaximize", remember);
+
   const devServer = process.env.ELECTRON_RENDERER_URL;
   void window.loadURL(devServer ?? `${RENDERER_ORIGIN}/index.html`);
 
@@ -183,9 +214,17 @@ ipcMain.on(IPC.ptyDispose, (event, { id }: { id: string }) => {
   managerFor(event)?.dispose(id);
 });
 
-void app.whenReady().then(() => {
+ipcMain.handle(IPC.layoutLoad, async (): Promise<unknown> => (await layoutStore?.load())?.layout);
+
+ipcMain.on(IPC.layoutSave, (_event, layout: unknown) => {
+  layoutStore?.setLayout(layout);
+});
+
+void app.whenReady().then(async () => {
   serveRenderer(fileURLToPath(new URL("../renderer/", import.meta.url)));
-  createWindow();
+  layoutStore = LayoutStore.in(app.getPath("userData"));
+  const stored = await layoutStore.load();
+  createWindow(stored.window);
 
   // macOS convention, harmless on Windows. Kept so the app behaves correctly if it is
   // ever run elsewhere, without pretending macOS is supported.
