@@ -8,8 +8,43 @@
 
 export const IPC = {
   /** Runtime versions, used by the shell to prove the main-preload-renderer chain. */
-  runtimeInfo: "runtime:info"
+  runtimeInfo: "runtime:info",
+
+  ptyCreate: "pty:create",
+  ptyWrite: "pty:write",
+  ptyResize: "pty:resize",
+  ptyDispose: "pty:dispose",
+  /** Main to renderer. Batched, so one message carries many pty reads. */
+  ptyData: "pty:data",
+  /** Main to renderer, once per pty. */
+  ptyExit: "pty:exit"
 } as const;
+
+export interface PtyCreateOptions {
+  readonly cwd?: string;
+  readonly cols: number;
+  readonly rows: number;
+}
+
+export interface PtyDataMessage {
+  readonly id: string;
+  readonly chunk: string;
+}
+
+export interface PtyExitMessage {
+  readonly id: string;
+  readonly exitCode: number;
+}
+
+export interface PtyBridge {
+  readonly create: (options: PtyCreateOptions) => Promise<string>;
+  readonly write: (id: string, data: string) => void;
+  readonly resize: (id: string, cols: number, rows: number) => void;
+  readonly dispose: (id: string) => void;
+  /** Returns an unsubscribe function, so a React effect can clean up after itself. */
+  readonly onData: (listener: (message: PtyDataMessage) => void) => () => void;
+  readonly onExit: (listener: (message: PtyExitMessage) => void) => () => void;
+}
 
 export interface RuntimeInfo {
   readonly app: string;
@@ -22,4 +57,5 @@ export interface RuntimeInfo {
 /** What `window.oikist` exposes. The preload bridge and the renderer both implement it. */
 export interface OikistBridge {
   readonly runtimeInfo: () => Promise<RuntimeInfo>;
+  readonly pty: PtyBridge;
 }

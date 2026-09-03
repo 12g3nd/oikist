@@ -12,7 +12,13 @@ export default defineConfig({
   main: {
     build: {
       target: NODE,
-      rollupOptions: { input: { index: resolve("src/main/index.ts") } }
+      rollupOptions: {
+        input: { index: resolve("src/main/index.ts") },
+        // node-pty is a native addon; bundling it would inline a `require` of a .node
+        // binary that no longer resolves. It stays external and is loaded from
+        // node_modules at runtime.
+        external: ["node-pty"]
+      }
     }
   },
   preload: {

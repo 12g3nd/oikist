@@ -3,9 +3,11 @@ import { writeFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { app, BrowserWindow, ipcMain, net, protocol, shell } from "electron";
+import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 
-import { IPC, type RuntimeInfo } from "../shared/ipc.js";
+import { IPC, type PtyCreateOptions, type RuntimeInfo } from "../shared/ipc.js";
 import { resolveRendererPath } from "../shared/renderer-path.js";
+import { PtyManager } from "./pty.js";
 
 /**
  * The renderer is served over `app://` rather than loaded from `file://`.
@@ -59,9 +61,10 @@ async function captureIfRequested(window: BrowserWindow): Promise<void> {
     console.log(`captured ${target}`);
   } catch (error) {
     console.error(`capture failed: ${error instanceof Error ? error.message : String(error)}`);
-    process.exitCode = 1;
+    shutdown(1);
+    return;
   }
-  app.quit();
+  shutdown(0);
 }
 
 /**
@@ -92,6 +95,10 @@ function createWindow(): BrowserWindow {
   window.once("ready-to-show", () => {
     window.show();
     void captureIfRequested(window);
+    const closeAfter = Number(process.env.OIKIST_CLOSE_TEST ?? "0");
+    if (closeAfter > 0) {
+      setTimeout(() => window.close(), closeAfter);
+    }
   });
 
   // Nothing in this application navigates itself to an external site, and a window that
@@ -114,6 +121,14 @@ function createWindow(): BrowserWindow {
     console.error(`[preload-error] ${preloadPath}: ${error.message}`);
   });
 
+  const manager = PtyManager.forWebContents(window.webContents);
+  ptyManagers.set(window.webContents.id, manager);
+  window.on("closed", () => {
+    // Shells are killed with their window rather than left running headless.
+    manager.disposeAll();
+    ptyManagers.delete(window.webContents.id);
+  });
+
   const devServer = process.env.ELECTRON_RENDERER_URL;
   void window.loadURL(devServer ?? `${RENDERER_ORIGIN}/index.html`);
 
@@ -128,6 +143,36 @@ ipcMain.handle(IPC.runtimeInfo, (): RuntimeInfo => ({
   platform: process.platform
 }));
 
+/**
+ * One PtyManager per window, so closing a window kills exactly its own shells and no
+ * others. Keyed by WebContents id because that is what every IPC event carries.
+ */
+const ptyManagers = new Map<number, PtyManager>();
+
+function managerFor(event: IpcMainEvent | IpcMainInvokeEvent): PtyManager | undefined {
+  return ptyManagers.get(event.sender.id);
+}
+
+ipcMain.handle(IPC.ptyCreate, (event, options: PtyCreateOptions): string => {
+  const manager = managerFor(event);
+  if (manager === undefined) {
+    throw new Error("No terminal host for this window.");
+  }
+  return manager.create(options);
+});
+
+ipcMain.on(IPC.ptyWrite, (event, { id, data }: { id: string; data: string }) => {
+  managerFor(event)?.write(id, data);
+});
+
+ipcMain.on(IPC.ptyResize, (event, { id, cols, rows }: { id: string; cols: number; rows: number }) => {
+  managerFor(event)?.resize(id, cols, rows);
+});
+
+ipcMain.on(IPC.ptyDispose, (event, { id }: { id: string }) => {
+  managerFor(event)?.dispose(id);
+});
+
 void app.whenReady().then(() => {
   serveRenderer(fileURLToPath(new URL("../renderer/", import.meta.url)));
   createWindow();
@@ -141,8 +186,25 @@ void app.whenReady().then(() => {
   });
 });
 
+/**
+ * Kills every shell, then asks the app to quit.
+ *
+ * KNOWN DEFECT: the process does not actually terminate — see
+ * `docs/KNOWN-ISSUES.md`. Shell cleanup below is verified working (no orphaned
+ * cmd/OpenConsole processes remain), so this is safe to call; what is unresolved is
+ * Electron's own shutdown.
+ */
+function shutdown(code = 0): void {
+  for (const manager of ptyManagers.values()) {
+    manager.disposeAll();
+  }
+  ptyManagers.clear();
+  void code;
+  app.quit();
+}
+
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
-    app.quit();
+    shutdown();
   }
 });

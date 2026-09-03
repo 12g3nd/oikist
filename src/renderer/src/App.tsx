@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import type { RuntimeInfo } from "../../shared/ipc.js";
+import { TerminalPane } from "./Terminal.js";
 
 /**
  * The M2 shell.
@@ -70,19 +71,9 @@ export function App(): React.JSX.Element {
           )}
         </section>
 
-        <section className="panel">
-          <h2>Next</h2>
-          <ol className="ladder">
-            <li>
-              <span className="rung">M3</span> Terminal — xterm + WebGL + node-pty, tabs, 2-up split
-            </li>
-            <li>
-              <span className="rung">M4</span> Agent rail — domain modules in-process, own-first launch
-            </li>
-            <li>
-              <span className="rung">M5</span> Restore
-            </li>
-          </ol>
+        <section className="panel panel--term">
+          <h2>Terminal</h2>
+          <TerminalPane focused />
         </section>
       </main>
     </div>

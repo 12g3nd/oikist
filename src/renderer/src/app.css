@@ -35,7 +35,11 @@ body {
 .shell {
   display: grid;
   grid-template-columns: 220px 1fr;
-  min-height: 100vh;
+  /* Fixed to the viewport, not a minimum. A terminal fills the space left over; if the
+     shell could grow past the viewport the page itself would scroll, which is wrong for
+     an application window and makes xterm's fit() measure a box that keeps moving. */
+  height: 100vh;
+  overflow: hidden;
 }
 
 .rail {
@@ -64,6 +68,8 @@ body {
   flex-direction: column;
   gap: 20px;
   padding: 26px 28px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .head h1 {
@@ -133,4 +139,18 @@ body {
 .error {
   margin: 0;
   color: var(--danger);
+}
+
+.panel--term {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 260px;
+}
+
+/* xterm measures itself against this box, so it must have real height before fit(). */
+.term-host {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }

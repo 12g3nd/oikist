@@ -88,3 +88,13 @@ a blank window.
 - **The renderer is served over `app://`, never `file://`.** A `file://` page has an
   opaque origin, so `script-src 'self'` in its CSP matches nothing and every module
   script is silently blocked.
+
+## Measuring whether the app exited
+
+Do not judge this by a wrapper's exit code, `Process.WaitForExit`, or a PID lookup. All
+three gave false answers during the M3 investigation: PowerShell's `Start-Process`
+object reported `HasExited: True` while child processes survived, and Windows reuses
+PIDs fast enough that an id-based check finds an unrelated process. Poll by process
+**name** (`Get-Process electron`) against a baseline taken before launch.
+
+See `docs/KNOWN-ISSUES.md` — the app currently does not exit on quit.
