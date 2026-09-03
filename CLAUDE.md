@@ -1,0 +1,70 @@
+# oikist
+
+A Windows-only, agent-native development environment. Coding agents (Claude Code and
+Codex) are first-class objects, not processes that happen to live in terminal panes.
+
+**Status:** pre-M0. No implementation yet. Commands below appear as they are built.
+
+## Read first
+
+- `docs/DECISIONS.md` — every architectural decision with its reasoning. **Read this
+  before proposing any change to architecture, dependencies, or scope.** If a
+  decision changes, edit that file in the same commit.
+
+## Commands
+
+_None yet — this repo is pre-M0. Fill this in at M2._
+
+## Hard rules
+
+1. **Do not add anything on the v1 fence** (see below) without the fence being
+   explicitly changed in `docs/DECISIONS.md` first.
+2. **TypeScript only.** No Go, no Rust, no new language runtimes. The escape hatch
+   for a measured hot path is documented in `docs/DECISIONS.md` section 2 — it
+   requires a measurement, not an opinion.
+3. **No new native modules.** `node-pty` is the one accepted native dependency.
+   Adding a second (e.g. `better-sqlite3`) needs a decision-record entry.
+4. **Never mutate the user's global agent config.** No writes to
+   `~/.claude/settings.json` or `~/.codex/config.toml`. Owned agents get per-launch
+   `--settings` and `--session-id`. oikist must change nothing about how Claude or
+   Codex behave outside oikist.
+5. **Persistence is plain JSON with atomic writes.** No database.
+6. **Never auto-resume an agent.** Restore shows last known state; the human clicks
+   to resume.
+7. **Tag inferred data as inferred.** Launched agents are known with certainty;
+   attached agents are known with confidence. The UI must show the difference.
+
+## Testing split
+
+- **Domain layer (`src/domain/**`) — TDD.** Failing test first. This is ported from
+  `wave-devtools` and keeps its discipline.
+- **UI layer — manual verification plus a few end-to-end smoke tests.** Do not
+  attempt to TDD React pane layout.
+
+Do not "improve" this split by extending TDD to the UI. It is a deliberate choice
+recorded in `docs/DECISIONS.md` section 7.
+
+## v1 fence
+
+**Out:** SSH/remote, multi-platform, Monaco *editing*, command palette, project
+dashboards, NPU/local models, unsupervised agent-to-agent messaging, worktree
+comparison, plugin systems, theming beyond one chosen look.
+
+**In:** a read-only file viewer.
+
+**Done:** all six switch-bar items in `docs/DECISIONS.md` section 4 work, and oikist
+has been used for one full workday without opening Wave.
+
+## Writing plans
+
+Plans go in `docs/PHASE-N-<name>.md` and are **capped at a few hundred lines**. The
+predecessor project's 4,689-line plan was re-read by agents every session and
+materially contributed to quota exhaustion. Short plans, read on demand.
+
+## Reference material
+
+- `C:\Users\SJ\ref\waveterm` — Wave Terminal source. **Reference only, never a
+  dependency.** Useful for: ConPTY handling on Windows, tiling layout, block state
+  modeling, and a working `electron-vite` configuration.
+- `C:\Users\SJ\Downloads\wave-devtools` — the predecessor. Its `src/server/agents/*`
+  and `src/server/sessions/*` are the domain layer that migrates into this repo.
