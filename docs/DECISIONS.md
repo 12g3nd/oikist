@@ -256,7 +256,7 @@ project dies is building feature 12 of 40 forever and never switching off Wave.
 | **M1** | ~~Finish Phase 3; add clipboard handoff~~ **done 2026-09-03** | Tasks 10–13 + `npm run handoff`. Frozen. One open call: poll perf at saturation |
 | **M2** | ~~Repo init~~ **done 2026-09-03** | electron-vite, React 19, sandboxed renderer over `app://` |
 | **M3** | ~~Terminal, tabs, 2-up split, JSON layout~~ **done 2026-09-03** | Batched pty output; layout restored on launch |
-| **M4** | Agent rail: domain modules in-process, own-first launch, attached discovery | |
+| **M4** | Agent rail — **discovery + rail done 2026-09-03**; owned launch + hooks next | `claude agents --json`; activity needs hooks |
 | **M5** | Restore | |
 | **M6** | Read-only file viewer | |
 | **M7** | Routing + handoff, full | Cheap manual half ships in M1 |

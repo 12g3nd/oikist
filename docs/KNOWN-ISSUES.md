@@ -62,3 +62,33 @@ that cannot pass needs checking before its failure is believed.
 
 The lesson, in order: validate the measurement, bisect the real thing downward, and do
 not write a fix until an experiment has named the cause.
+
+---
+
+## Findings
+
+### Claude 2.1.238 no longer reports activity in its live-session files
+
+**Found at M4, 2026-09-03.**
+
+`~/.claude/sessions/<pid>.json` on 2.1.238 carries identity only — `pid`, `sessionId`,
+`cwd`, `startedAt`, `procStart`, `name` and similar. The fields `status`, `waitingFor`
+and `statusUpdatedAt` are **gone**.
+
+wave-devtools' `claude-live.ts` was written against 2.1.234 and depends on all three:
+its `mapClaudeLiveStatus` exists to turn `waitingFor` into an activity, and
+`resolveStatusUpdatedMs` orders records by `statusUpdatedAt`. **That entire poll-based
+activity inference is dead on the current version**, which is why oikist takes identity
+from `claude agents --json` — a supported, scriptable command — and will take activity
+from hooks on agents it launches itself.
+
+A good argument for the decision to stop scraping: the scraped fields disappeared within
+four patch versions, silently, with no error. An agent panel built on them would simply
+have started saying "idle" about everything.
+
+### Discovery costs about a second per pass
+
+`claude agents --json` spawns a Node process and took 0.8–1.5s across three runs on this
+machine. It cannot poll at terminal speed, so discovery runs every 5s with single-flight
+and exists only to notice sessions started outside oikist. Agents oikist launches will
+report their own state through hooks, immediately, and that is the path that matters.

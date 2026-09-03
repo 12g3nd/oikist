@@ -12,6 +12,7 @@ import {
   unsplitPane,
   type LayoutState
 } from "../../shared/layout.js";
+import { AgentRail } from "./AgentRail.js";
 import { TerminalPane } from "./Terminal.js";
 
 const newId = (): string => crypto.randomUUID();
@@ -90,10 +91,7 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="shell">
-      <aside className="rail" aria-label="Agents">
-        <span className="rail-label">AGENTS</span>
-        <p className="rail-empty">No agents yet. The rail becomes the spine of the app at M4.</p>
-      </aside>
+      <AgentRail />
 
       <main className="main">
         <div className="tabbar" role="tablist" aria-label="Terminal tabs">

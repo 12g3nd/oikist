@@ -6,6 +6,7 @@ import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 
 import { IPC, type PtyCreateOptions, type RuntimeInfo } from "../shared/ipc.js";
 import { resolveRendererPath } from "../shared/renderer-path.js";
+import { AgentDiscovery } from "./agents/discovery.js";
 import { LayoutStore, type WindowBounds } from "./layout-store.js";
 import { PtyManager } from "./pty.js";
 
@@ -214,6 +215,23 @@ ipcMain.on(IPC.ptyDispose, (event, { id }: { id: string }) => {
   managerFor(event)?.dispose(id);
 });
 
+/**
+ * One discovery loop for the whole app, broadcast to every window.
+ *
+ * Polling costs a process spawn per pass, so it is shared rather than run per window.
+ */
+const discovery = new AgentDiscovery({
+  onResult: (result) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        window.webContents.send(IPC.agentsUpdated, result);
+      }
+    }
+  }
+});
+
+ipcMain.handle(IPC.agentsList, () => discovery.last);
+
 ipcMain.handle(IPC.layoutLoad, async (): Promise<unknown> => (await layoutStore?.load())?.layout);
 
 ipcMain.on(IPC.layoutSave, (_event, layout: unknown) => {
@@ -225,6 +243,7 @@ void app.whenReady().then(async () => {
   layoutStore = LayoutStore.in(app.getPath("userData"));
   const stored = await layoutStore.load();
   createWindow(stored.window);
+  discovery.start();
 
   // macOS convention, harmless on Windows. Kept so the app behaves correctly if it is
   // ever run elsewhere, without pretending macOS is supported.
@@ -237,6 +256,7 @@ void app.whenReady().then(async () => {
 
 /** Kills every shell, then quits. */
 function shutdown(code = 0): void {
+  discovery.stop();
   for (const manager of ptyManagers.values()) {
     manager.disposeAll();
   }

@@ -1,3 +1,5 @@
+import type { AgentSummary } from "./agents.js";
+
 /**
  * The contract between the main process and the renderer.
  *
@@ -20,7 +22,11 @@ export const IPC = {
   ptyExit: "pty:exit",
 
   layoutLoad: "layout:load",
-  layoutSave: "layout:save"
+  layoutSave: "layout:save",
+
+  agentsList: "agents:list",
+  /** Main to renderer, once per discovery pass. */
+  agentsUpdated: "agents:updated"
 } as const;
 
 export interface PtyCreateOptions {
@@ -66,4 +72,16 @@ export interface OikistBridge {
     readonly load: () => Promise<unknown>;
     readonly save: (layout: unknown) => void;
   };
+  readonly agents: {
+    readonly list: () => Promise<AgentsSnapshot>;
+    readonly onUpdate: (listener: (snapshot: AgentsSnapshot) => void) => () => void;
+  };
+}
+
+export interface AgentsSnapshot {
+  readonly agents: readonly AgentSummary[];
+  /** False when the provider could not be consulted — not the same as "no agents". */
+  readonly ok: boolean;
+  readonly error?: string;
+  readonly refreshedAt: string;
 }

@@ -6,6 +6,7 @@ import {
   type PtyCreateOptions,
   type PtyDataMessage,
   type PtyExitMessage,
+  type AgentsSnapshot,
   type RuntimeInfo
 } from "../shared/ipc.js";
 
@@ -42,6 +43,10 @@ const bridge: OikistBridge = {
   layout: {
     load: () => ipcRenderer.invoke(IPC.layoutLoad) as Promise<unknown>,
     save: (layout: unknown) => ipcRenderer.send(IPC.layoutSave, layout)
+  },
+  agents: {
+    list: () => ipcRenderer.invoke(IPC.agentsList) as Promise<AgentsSnapshot>,
+    onUpdate: (listener) => subscribe<AgentsSnapshot>(IPC.agentsUpdated, listener)
   }
 };
 
