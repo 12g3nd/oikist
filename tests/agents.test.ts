@@ -5,13 +5,14 @@ import {
   ATTENTION_ORDER,
   compareAgents,
   parseClaudeAgents,
+  mergeAgents,
   projectFromCwd,
   type AgentSummary
 } from "../src/shared/agents.js";
 
 const VALID = {
   pid: 31412,
-  cwd: "C:\\Users\\SJ\\oikist",
+  cwd: "C:\\\\Users\\\\SJ\\\\oikist",
   kind: "interactive",
   startedAt: 1788407745027,
   sessionId: "310ff72c-7a29-4972-acc8-edb59ebee744",
@@ -103,4 +104,52 @@ test("agents in the same state sort by most recently started", () => {
     { ...base, sessionId: "new", title: "new", startedAt: 5000 }
   ].sort(compareAgents);
   assert.equal(sorted[0]?.sessionId, "new");
+});
+
+// --- merging what we launched with what we found ---
+
+const ATTACHED: AgentSummary = {
+  provider: "claude",
+  sessionId: VALID.sessionId,
+  activity: "unknown",
+  origin: "attached",
+  confidence: "confident",
+  title: "oikist-e9",
+  startedAt: 1000,
+  pid: 31412,
+  cwd: "C:\\Users\\SJ\\oikist",
+  project: "oikist"
+};
+
+test("a launched agent wins over the same session found by the poller", () => {
+  const merged = mergeAgents(
+    [{ sessionId: VALID.sessionId, activity: "needsPermission", startedAt: 2000 }],
+    [ATTACHED]
+  );
+  assert.equal(merged.length, 1, "one session is one row");
+  assert.equal(merged[0]?.activity, "needsPermission", "hook-reported state beats the poller's guess");
+  assert.equal(merged[0]?.origin, "launched");
+  assert.equal(merged[0]?.confidence, "certain");
+});
+
+test("merging keeps the pid and name discovery knows and a launch record lacks", () => {
+  const [merged] = mergeAgents([{ sessionId: VALID.sessionId, activity: "working", startedAt: 0 }], [ATTACHED]);
+  assert.equal(merged?.pid, 31412);
+  assert.equal(merged?.title, "oikist-e9");
+  assert.equal(merged?.cwd, "C:\\Users\\SJ\\oikist");
+  assert.equal(merged?.startedAt, 1000, "a launch with no time falls back to the discovered one");
+});
+
+test("a launched agent the poller has not seen yet still appears", () => {
+  const merged = mergeAgents(
+    [{ sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", activity: "working", startedAt: 5, cwd: "D:\\work\\fallow" }],
+    []
+  );
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0]?.project, "fallow");
+  assert.equal(merged[0]?.title, "fallow");
+});
+
+test("attached agents with no launch record are untouched", () => {
+  assert.deepEqual(mergeAgents([], [ATTACHED]), [ATTACHED]);
 });

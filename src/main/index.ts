@@ -6,7 +6,10 @@ import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 
 import { IPC, type PtyCreateOptions, type RuntimeInfo } from "../shared/ipc.js";
 import { resolveRendererPath } from "../shared/renderer-path.js";
+import { mergeAgents } from "../shared/agents.js";
 import { AgentDiscovery } from "./agents/discovery.js";
+import { startHookServer, type HookServer } from "./agents/hook-server.js";
+import { AgentLauncher } from "./agents/launcher.js";
 import { LayoutStore, type WindowBounds } from "./layout-store.js";
 import { PtyManager } from "./pty.js";
 
@@ -54,9 +57,11 @@ async function captureIfRequested(window: BrowserWindow): Promise<void> {
     return;
   }
   try {
-    // One frame of settle time, so async first paints (fonts, the runtime panel's IPC
-    // round trip) are in the image rather than caught mid-flight.
-    await new Promise((resolve) => setTimeout(resolve, 700));
+    // Settle time before the shutter. 700ms covers a first paint; verifying something
+    // that has to boot first — an agent starting in a pane — needs longer, so the delay
+    // is adjustable rather than a constant that quietly photographs the wrong moment.
+    const settleMs = Number(process.env.OIKIST_CAPTURE_DELAY ?? "700");
+    await new Promise((resolve) => setTimeout(resolve, Number.isFinite(settleMs) ? settleMs : 700));
     const image = await window.webContents.capturePage();
     await writeFile(target, image.toPNG());
     console.log(`captured ${target}`);
@@ -200,7 +205,17 @@ ipcMain.handle(IPC.ptyCreate, async (event, options: PtyCreateOptions): Promise<
   if (manager === undefined) {
     throw new Error("No terminal host for this window.");
   }
-  return manager.create(options);
+  if (options.agent !== "claude" || launcher === null) {
+    return manager.create(options);
+  }
+
+  const launch = await launcher.prepare(options.cwd);
+  const id = await manager.create(options, { file: launch.file, args: launch.args });
+  agentSessionForPty.set(id, launch.sessionId);
+  // The pane appears in the rail immediately, before its first hook, so launching an
+  // agent has visible effect rather than a second of nothing.
+  publishAgents();
+  return id;
 });
 
 ipcMain.on(IPC.ptyWrite, (event, { id, data }: { id: string; data: string }) => {
@@ -211,8 +226,18 @@ ipcMain.on(IPC.ptyResize, (event, { id, cols, rows }: { id: string; cols: number
   managerFor(event)?.resize(id, cols, rows);
 });
 
+/** Which pty runs which agent session, so closing a pane retires its rail row. */
+const agentSessionForPty = new Map<string, string>();
+
 ipcMain.on(IPC.ptyDispose, (event, { id }: { id: string }) => {
   managerFor(event)?.dispose(id);
+  const sessionId = agentSessionForPty.get(id);
+  if (sessionId !== undefined) {
+    agentSessionForPty.delete(id);
+    if (launcher?.forget(sessionId) === true) {
+      publishAgents();
+    }
+  }
 });
 
 /**
@@ -220,17 +245,42 @@ ipcMain.on(IPC.ptyDispose, (event, { id }: { id: string }) => {
  *
  * Polling costs a process spawn per pass, so it is shared rather than run per window.
  */
-const discovery = new AgentDiscovery({
-  onResult: (result) => {
-    for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed()) {
-        window.webContents.send(IPC.agentsUpdated, result);
-      }
+let hookServer: HookServer | null = null;
+let launcher: AgentLauncher | null = null;
+
+/**
+ * What the rail shows: agents oikist launched, merged over agents it found.
+ *
+ * A launched agent's own hooks beat anything the poller can infer about the same
+ * session, so it wins the merge while discovery still contributes the pid and name.
+ */
+function snapshot(): {
+  agents: ReturnType<typeof mergeAgents>;
+  ok: boolean;
+  error?: string;
+  refreshedAt: string;
+} {
+  const found = discovery.last;
+  return {
+    agents: mergeAgents(launcher?.agents ?? [], found.agents),
+    ok: found.ok,
+    ...(found.error === undefined ? {} : { error: found.error }),
+    refreshedAt: found.refreshedAt
+  };
+}
+
+function publishAgents(): void {
+  const payload = snapshot();
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send(IPC.agentsUpdated, payload);
     }
   }
-});
+}
 
-ipcMain.handle(IPC.agentsList, () => discovery.last);
+const discovery = new AgentDiscovery({ onResult: () => publishAgents() });
+
+ipcMain.handle(IPC.agentsList, () => snapshot());
 
 ipcMain.handle(IPC.layoutLoad, async (): Promise<unknown> => (await layoutStore?.load())?.layout);
 
@@ -240,6 +290,12 @@ ipcMain.on(IPC.layoutSave, (_event, layout: unknown) => {
 
 void app.whenReady().then(async () => {
   serveRenderer(fileURLToPath(new URL("../renderer/", import.meta.url)));
+  hookServer = await startHookServer((event) => {
+    if (launcher?.applyHookEvent(event) === true) {
+      publishAgents();
+    }
+  });
+  launcher = new AgentLauncher(hookServer.endpoint, hookServer.token);
   layoutStore = LayoutStore.in(app.getPath("userData"));
   const stored = await layoutStore.load();
   createWindow(stored.window);
@@ -257,6 +313,8 @@ void app.whenReady().then(async () => {
 /** Kills every shell, then quits. */
 function shutdown(code = 0): void {
   discovery.stop();
+  void hookServer?.close();
+  void launcher?.dispose();
   for (const manager of ptyManagers.values()) {
     manager.disposeAll();
   }

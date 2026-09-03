@@ -26,6 +26,8 @@ const THEME = {
 interface TerminalPaneProps {
   /** Marks which pane owns keyboard focus; only the focused pane takes input. */
   readonly focused: boolean;
+  /** Absent for a plain shell; set to run a coding agent in this pane. */
+  readonly agent?: "claude";
   readonly onExit?: (exitCode: number) => void;
 }
 
@@ -36,9 +38,18 @@ interface TerminalPaneProps {
  * canvas and a WebGL context, and letting React's render cycle recreate it would
  * destroy and re-establish the GPU context on every parent update.
  */
-export function TerminalPane({ focused, onExit }: TerminalPaneProps): React.JSX.Element {
+export function TerminalPane({ focused, agent, onExit }: TerminalPaneProps): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Xterm | null>(null);
+
+  // Held in a ref, never in the effect's dependencies.
+  //
+  // Callers pass an inline arrow, which is a new function on every render. As a
+  // dependency it made the effect tear down and recreate the terminal — and its pty —
+  // on every parent render, which spawned a second shell and left a duplicate agent in
+  // the rail. The pane must be created exactly once per pane identity.
+  const onExitRef = useRef(onExit);
+  onExitRef.current = onExit;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -90,11 +101,14 @@ export function TerminalPane({ focused, onExit }: TerminalPaneProps): React.JSX.
     });
     const offExit = window.oikist.pty.onExit(({ id, exitCode }) => {
       if (id === ptyId) {
-        onExit?.(exitCode);
+        onExitRef.current?.(exitCode);
       }
     });
 
-    void window.oikist.pty.create({ cols: term.cols, rows: term.rows }).then((id) => {
+    const request = agent === undefined
+      ? { cols: term.cols, rows: term.rows }
+      : { cols: term.cols, rows: term.rows, agent };
+    void window.oikist.pty.create(request).then((id) => {
       if (disposed) {
         // The pane unmounted while the shell was starting; do not leave it running.
         window.oikist.pty.dispose(id);
@@ -106,6 +120,15 @@ export function TerminalPane({ focused, onExit }: TerminalPaneProps): React.JSX.
         window.oikist.pty.write(id, queued);
       }
       pending.length = 0;
+    }).catch((error: unknown) => {
+      // A pane that cannot start says so in the pane. The alternative is an empty black
+      // rectangle and an error only visible in a log the user will never open.
+      const message = error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': /, "") : String(error);
+      term.write(`
+
+[31m${message}[0m
+
+`);
     });
 
     const onKey = term.onData((data) => {
@@ -142,7 +165,7 @@ export function TerminalPane({ focused, onExit }: TerminalPaneProps): React.JSX.
       term.dispose();
       termRef.current = null;
     };
-  }, [onExit]);
+  }, [agent]);
 
   useEffect(() => {
     if (focused) {

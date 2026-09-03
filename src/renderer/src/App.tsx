@@ -143,6 +143,14 @@ export function App(): React.JSX.Element {
           >
             ◫
           </button>
+          <button
+            className="tabbar-action tabbar-action--agent"
+            type="button"
+            onClick={() => apply((current) => createTab(current, newId, "claude"))}
+            title="New Claude agent — launched by oikist, so it reports its own state"
+          >
+            + CLAUDE
+          </button>
         </div>
 
         {/*
@@ -165,6 +173,7 @@ export function App(): React.JSX.Element {
               >
                 <TerminalPane
                   focused={tab.id === activeTab.id && pane.id === tab.activePaneId}
+                  {...(pane.agent === undefined ? {} : { agent: pane.agent })}
                   onExit={() => apply((current) => unsplitPane(current, tab.id, pane.id, newId))}
                 />
               </div>

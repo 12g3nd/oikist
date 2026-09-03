@@ -1,0 +1,156 @@
+import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { constants } from "node:fs";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+
+import { activityForKind, buildHookSettings, isSessionEnd, type HookEvent } from "../../shared/hooks.js";
+import { projectFromCwd, type LaunchedAgent } from "../../shared/agents.js";
+
+const run = promisify(execFile);
+
+/**
+ * Starts Claude sessions that oikist owns, and tracks what their hooks report.
+ *
+ * Two things make an owned agent different from a discovered one, and both come from
+ * the launch: the session id is *assigned* with `--session-id` rather than recovered,
+ * and hooks are installed per launch with `--settings`. Nothing is written to
+ * `~/.claude/settings.json`, so an agent started by hand behaves exactly as it did
+ * before oikist existed.
+ */
+export class AgentLauncher {
+  readonly #endpoint: string;
+  readonly #token: string;
+  readonly #launched = new Map<string, LaunchedAgent>();
+  #settingsDir: string | null = null;
+  #nodePath: string | null | undefined;
+
+  constructor(endpoint: string, token: string) {
+    this.#endpoint = endpoint;
+    this.#token = token;
+  }
+
+  get agents(): LaunchedAgent[] {
+    return [...this.#launched.values()];
+  }
+
+  /**
+   * Finds a real Node binary for the hook relay.
+   *
+   * `process.execPath` is Electron here, and Electron only behaves as Node with an
+   * environment variable that a hook definition cannot set. Resolved once and cached;
+   * `null` means hooks cannot be installed and the caller degrades accordingly.
+   */
+  async #resolveNode(): Promise<string | null> {
+    this.#nodePath ??= await this.#resolveExecutable("node");
+    return this.#nodePath;
+  }
+
+  /**
+   * Finds an executable on PATH.
+   *
+   * node-pty needs a real path: unlike `child_process` it does not search PATH, and a
+   * bare name fails with an unhelpful "File not found". Only `.exe` results are taken,
+   * since a `.cmd` shim is a batch file node-pty cannot execute directly either.
+   */
+  async #resolveExecutable(name: string): Promise<string | null> {
+    try {
+      const { stdout } = await run("where", [name], { windowsHide: true, timeout: 5_000 });
+      return (
+        stdout
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .find((line) => line.toLowerCase().endsWith(".exe")) ?? null
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Builds the argv for a new owned Claude session.
+   *
+   * Returns the arguments only — the caller spawns them into a pty, so the agent is a
+   * visible pane rather than a hidden process. If no Node can be found the session is
+   * still launched, without hooks: an agent you can see and type into is worth more
+   * than no agent, and the rail reports the reduced confidence rather than pretending.
+   */
+  async prepare(cwd?: string): Promise<{ sessionId: string; file: string; args: string[]; hooked: boolean }> {
+    const file = await this.#resolveExecutable("claude");
+    if (file === null) {
+      throw new Error("Claude was not found on PATH. Install Claude Code, or open a shell pane instead.");
+    }
+
+    const sessionId = randomUUID();
+    const args = ["--session-id", sessionId];
+    let hooked = false;
+
+    const nodePath = await this.#resolveNode();
+    if (nodePath !== null) {
+      try {
+        this.#settingsDir ??= await mkdtemp(join(tmpdir(), "oikist-hooks-"));
+        // Resolved from the built main bundle at out/main/index.js, so `../../` is the
+        // app root. Existence is checked rather than assumed: a wrong path here fails
+        // silently as a hook error inside the agent, where it is easy to miss.
+        const relayPath = fileURLToPath(new URL("../../resources/hook-relay.mjs", import.meta.url));
+        await access(relayPath, constants.R_OK);
+        const settingsPath = join(this.#settingsDir, `${sessionId}.json`);
+        const settings = buildHookSettings(nodePath, relayPath, this.#endpoint, this.#token);
+        await writeFile(settingsPath, JSON.stringify(settings, null, 2), "utf8");
+        args.push("--settings", settingsPath);
+        hooked = true;
+      } catch {
+        // Fall through unhooked rather than failing the launch.
+      }
+    }
+
+    this.#launched.set(sessionId, {
+      sessionId,
+      // Claude has not spoken yet. `idle` would be a claim; this is honest until the
+      // first hook arrives, and for an unhooked session it stays honest permanently.
+      activity: "unknown",
+      startedAt: Date.now(),
+      ...(cwd === undefined ? {} : { cwd, title: projectFromCwd(cwd) })
+    });
+
+    return { sessionId, file, args, hooked };
+  }
+
+  /** Applies one hook event. Returns true when the rail should be republished. */
+  applyHookEvent(event: HookEvent): boolean {
+    const existing = this.#launched.get(event.sessionId);
+    if (existing === undefined) {
+      // A hook from a session this process did not launch — a leftover settings file
+      // from a previous run, most likely. Ignored rather than inventing a row: oikist
+      // knows nothing else about it, and a row with no cwd or name helps no one.
+      return false;
+    }
+    if (isSessionEnd(event.kind)) {
+      this.#launched.delete(event.sessionId);
+      return true;
+    }
+    const activity = activityForKind(event.kind);
+    if (activity === null || activity === existing.activity) {
+      return false;
+    }
+    this.#launched.set(event.sessionId, { ...existing, activity });
+    return true;
+  }
+
+  /** Called when a pane closes, so a killed agent leaves the rail. */
+  forget(sessionId: string): boolean {
+    return this.#launched.delete(sessionId);
+  }
+
+  async dispose(): Promise<void> {
+    this.#launched.clear();
+    if (this.#settingsDir !== null) {
+      // Each file carries a live token; they do not outlive the run that issued it.
+      await rm(this.#settingsDir, { recursive: true, force: true }).catch(() => {});
+      this.#settingsDir = null;
+    }
+  }
+}

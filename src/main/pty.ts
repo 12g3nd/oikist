@@ -55,6 +55,11 @@ function defaultShell(): string {
   return process.env.COMSPEC ?? "cmd.exe";
 }
 
+export interface SpawnRequest {
+  readonly file: string;
+  readonly args: readonly string[];
+}
+
 export class PtyManager {
   readonly #sessions = new Map<string, Session>();
   readonly #send: (channel: string, payload: unknown) => void;
@@ -77,10 +82,16 @@ export class PtyManager {
     });
   }
 
-  async create(options: PtyCreateOptions): Promise<string> {
+  /**
+   * Starts a pty running `request`, or the shell when none is given.
+   *
+   * An agent is spawned into a pane exactly like a shell is, so it is visible and can be
+   * typed into, rather than hidden behind a status row.
+   */
+  async create(options: PtyCreateOptions, request?: SpawnRequest): Promise<string> {
     const id = randomUUID();
     const spawn = await loadSpawn();
-    const pty = spawn(defaultShell(), [], {
+    const pty = spawn(request?.file ?? defaultShell(), [...(request?.args ?? [])], {
       name: "xterm-256color",
       cols: Math.max(1, Math.trunc(options.cols)),
       rows: Math.max(1, Math.trunc(options.rows)),

@@ -33,6 +33,8 @@ export interface PtyCreateOptions {
   readonly cwd?: string;
   readonly cols: number;
   readonly rows: number;
+  /** Absent for a plain shell; set to run a coding agent in this pane instead. */
+  readonly agent?: "claude";
 }
 
 export interface PtyDataMessage {

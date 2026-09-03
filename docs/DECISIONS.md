@@ -1,6 +1,7 @@
 # oikist — Design Decisions
 
-**Status:** M3 complete — the terminal, tabs, split and layout restore all work.
+**Status:** M4 complete — terminal, tabs, split, layout restore, and an agent rail fed by
+both discovery and per-launch hooks.
 **Recorded:** 2026-09-03
 
 This is the decision record for oikist, a Windows-only, agent-native development
@@ -256,7 +257,7 @@ project dies is building feature 12 of 40 forever and never switching off Wave.
 | **M1** | ~~Finish Phase 3; add clipboard handoff~~ **done 2026-09-03** | Tasks 10–13 + `npm run handoff`. Frozen. One open call: poll perf at saturation |
 | **M2** | ~~Repo init~~ **done 2026-09-03** | electron-vite, React 19, sandboxed renderer over `app://` |
 | **M3** | ~~Terminal, tabs, 2-up split, JSON layout~~ **done 2026-09-03** | Batched pty output; layout restored on launch |
-| **M4** | Agent rail — **discovery + rail done 2026-09-03**; owned launch + hooks next | `claude agents --json`; activity needs hooks |
+| **M4** | ~~Agent rail, owned launch, hooks~~ **done 2026-09-03** | Launched agents report state; attached ones are labelled |
 | **M5** | Restore | |
 | **M6** | Read-only file viewer | |
 | **M7** | Routing + handoff, full | Cheap manual half ships in M1 |

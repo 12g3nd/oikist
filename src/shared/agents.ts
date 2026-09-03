@@ -114,3 +114,52 @@ export function parseClaudeAgents(value: unknown): AgentSummary[] {
   }
   return agents.sort(compareAgents);
 }
+
+/**
+ * State oikist knows about an agent it started itself.
+ *
+ * Reported by that agent's own hooks rather than inferred, which is why these rows are
+ * `certain` while discovered ones are only `confident`.
+ */
+export interface LaunchedAgent {
+  readonly sessionId: string;
+  readonly activity: AgentActivity;
+  readonly startedAt: number;
+  readonly cwd?: string;
+  readonly title?: string;
+}
+
+/**
+ * Merges agents oikist launched with agents it merely found.
+ *
+ * A launched agent always wins: it has hooks and reports its own state, so anything the
+ * poller says about the same session is strictly worse information. Discovery still
+ * contributes the pid and the name it knows, which a launched record may not carry yet.
+ */
+export function mergeAgents(
+  launched: readonly LaunchedAgent[],
+  attached: readonly AgentSummary[]
+): AgentSummary[] {
+  const byId = new Map<string, AgentSummary>();
+  for (const agent of attached) {
+    byId.set(agent.sessionId, agent);
+  }
+  for (const own of launched) {
+    const discovered = byId.get(own.sessionId);
+    const cwd = own.cwd ?? discovered?.cwd;
+    const project = cwd === undefined ? discovered?.project : projectFromCwd(cwd);
+    byId.set(own.sessionId, {
+      provider: "claude",
+      sessionId: own.sessionId,
+      activity: own.activity,
+      origin: "launched",
+      confidence: "certain",
+      title: own.title ?? discovered?.title ?? project ?? own.sessionId.slice(0, 8),
+      startedAt: own.startedAt || (discovered?.startedAt ?? 0),
+      ...(discovered?.pid === undefined ? {} : { pid: discovered.pid }),
+      ...(cwd === undefined ? {} : { cwd }),
+      ...(project === undefined || project === "" ? {} : { project })
+    });
+  }
+  return [...byId.values()].sort(compareAgents);
+}

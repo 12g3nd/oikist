@@ -256,6 +256,13 @@ body {
 }
 
 .tabbar-action:hover:not(:disabled) { color: var(--accent); }
+
+.tabbar-action--agent {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+}
 .tabbar-action:disabled { opacity: 0.3; cursor: default; }
 .tabbar-action:focus-visible { outline: 1px solid var(--accent); outline-offset: -2px; }
 

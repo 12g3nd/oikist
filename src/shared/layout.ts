@@ -22,6 +22,8 @@ export type IdFactory = () => string;
 export interface PaneState {
   readonly id: string;
   readonly title: string;
+  /** Absent for a plain shell. Set when this pane runs a coding agent. */
+  readonly agent?: "claude";
 }
 
 export interface TabState {
@@ -37,13 +39,13 @@ export interface LayoutState {
   readonly activeTabId: string | null;
 }
 
-function newPane(nextId: IdFactory): PaneState {
-  return { id: nextId(), title: "" };
+function newPane(nextId: IdFactory, agent?: "claude"): PaneState {
+  return agent === undefined ? { id: nextId(), title: "" } : { id: nextId(), title: "", agent };
 }
 
-function newTab(nextId: IdFactory): TabState {
-  const pane = newPane(nextId);
-  return { id: nextId(), title: "shell", panes: [pane], activePaneId: pane.id };
+function newTab(nextId: IdFactory, agent?: "claude"): TabState {
+  const pane = newPane(nextId, agent);
+  return { id: nextId(), title: agent ?? "shell", panes: [pane], activePaneId: pane.id };
 }
 
 export function defaultLayout(nextId: IdFactory): LayoutState {
@@ -51,8 +53,8 @@ export function defaultLayout(nextId: IdFactory): LayoutState {
   return { version: LAYOUT_VERSION, tabs: [tab], activeTabId: tab.id };
 }
 
-export function createTab(layout: LayoutState, nextId: IdFactory): LayoutState {
-  const tab = newTab(nextId);
+export function createTab(layout: LayoutState, nextId: IdFactory, agent?: "claude"): LayoutState {
+  const tab = newTab(nextId, agent);
   return { ...layout, tabs: [...layout.tabs, tab], activeTabId: tab.id };
 }
 
@@ -157,7 +159,10 @@ function readPane(value: unknown): PaneState | null {
   if (!isRecord(value) || typeof value.id !== "string" || value.id === "") {
     return null;
   }
-  return { id: value.id, title: readString(value.title, "") };
+  // Only a known provider survives the read; anything else becomes a plain shell.
+  return value.agent === "claude"
+    ? { id: value.id, title: readString(value.title, ""), agent: "claude" }
+    : { id: value.id, title: readString(value.title, "") };
 }
 
 function readTab(value: unknown): TabState | null {

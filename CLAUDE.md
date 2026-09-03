@@ -118,3 +118,34 @@ Two traps already hit here, both worth remembering:
 - **`[hidden]` needs `display: none !important`.** The attribute works through a UA rule
   that any explicit `display` in our stylesheet outranks, so a hidden tab kept rendering
   its terminal below the visible one.
+
+## How agent state reaches the app
+
+Two paths, and the difference is visible in the UI:
+
+- **Launched** (`certain`) — oikist spawned the agent with `--session-id` (assigned, not
+  recovered) and `--settings` pointing at a per-launch hooks file. Its hooks run
+  `resources/hook-relay.mjs`, which POSTs `{sessionId, kind}` to an ephemeral loopback
+  listener bound on `127.0.0.1:0` with a per-run bearer token. Nothing is ever written
+  to `~/.claude/settings.json`.
+- **Attached** (`confident`) — found by polling `claude agents --json` every 5s. Identity
+  only. Claude 2.1.238 no longer publishes activity anywhere readable, so these rows say
+  `STATE UNKNOWN` rather than guessing.
+
+Never flatten those two into one label. A status panel that shows a guess as a fact
+stops being believed the first time it is wrong.
+
+### Traps hit building this
+
+- **node-pty does not search PATH.** A bare `claude` fails with `File not found:`.
+  Resolve to an absolute `.exe` first; a `.cmd` shim will not work either.
+- **The hook relay must run under real Node, not Electron.** `process.execPath` is
+  `electron.exe`, which behaves as Node only with an env var a hook definition cannot
+  set, so the launcher resolves `node` from PATH.
+- **Never put an inline callback in a terminal effect's dependency array.** `onExit` as
+  a dependency made the pane tear down and recreate its pty on every parent render,
+  which spawned duplicate shells and duplicate rail rows. Hold it in a ref.
+- **`--test-force-exit` is not free on Windows.** It kills the process while handles are
+  still closing and trips a libuv assertion. `tests/pty.test.ts` needs it (node-pty
+  never releases the loop); anything using `fetch` will crash under it, so those tests
+  use `node:http` with `agent: false`.
