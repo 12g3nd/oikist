@@ -173,17 +173,32 @@ lower-confidence** — no hooks means no reliable "needs permission" signal. A g
 hook install (Phase 3 Task 8, already built) remains available as an opt-in if the
 gap becomes annoying in practice. It is not the default.
 
-**Codex** exposes more than was assumed when Phase 3 was planned:
-`codex app-server` (with `generate-ts` and `generate-json-schema` — an actual
-protocol with TypeScript bindings), `codex agents`, `codex exec`, `codex apply`, and
-`codex queue --thread <uuid> --message <text>`, which injects a message into a
-running session. That last is the handoff primitive, already built upstream.
-**Spike this before writing any Codex integration.**
+**Codex is integrated through `codex app-server`, not hooks.** Spiked 2026-09-03;
+full findings in [`SPIKE-codex-app-server.md`](SPIKE-codex-app-server.md). It runs as
+a stdio child process speaking line-delimited JSON-RPC, works on Windows, and
+publishes `ThreadActiveFlag = "waitingOnApproval" | "waitingOnUserInput"` as a typed
+enum via `thread/status/changed` — the attention model Phase 3 derived by hand.
+Approvals arrive as unanswered server-to-client *requests*, so no inference is
+needed. `thread/list` supplies `cwd`, `gitInfo { sha, branch, originUrl }`, preview,
+name and status per thread; `turn/diff/updated` supplies the live diff.
+**Phase 3 Task 9, the Codex hook installer, is cut.**
 
-**Rate-limit awareness:** parse the reset timestamp reactively out of provider error
-text, with a manual override that is present from day one — the parse *will* break
-when wording changes. Provider `/usage` output is a better signal where it can be
-reached non-interactively; verify during the spike.
+**Codex is own-only on Windows.** `codex app-server daemon` lifecycle is Unix-only,
+so there is no shared daemon to attach to and an app-server instance only sees
+threads it loaded. oikist spawns and owns its own app-server process. Past Codex
+sessions stay readable via `thread/list` and must be labeled as *history*, not live.
+Revisit if the daemon becomes cross-platform.
+
+**Generated bindings are checked into the repo** (`codex app-server generate-ts`),
+pinned to a Codex version. The whole surface is marked experimental; a diff on the
+generated directory after an upgrade is the breaking-change alarm.
+
+**Rate-limit awareness:** for **Codex**, read it exactly —
+`account/rateLimits/read` and the `account/rateLimits/updated` push carry
+`usedPercent`, `windowDurationMins` and `resetsAt` for both the 5-hour and 7-day
+windows, plus plan type and credit balance. No parsing. For **Claude**, parse the
+reset timestamp reactively out of error text, with a manual override present from
+day one — that parse *will* break when wording changes.
 
 **Handoff payload:** task prompt + working state (branch, worktree, files touched) +
 **an agent-authored handoff note**, produced by asking the outgoing agent to write
@@ -237,7 +252,7 @@ project dies is building feature 12 of 40 forever and never switching off Wave.
 | | Milestone | Notes |
 |---|---|---|
 | **M0** | Two-arm spike: Electron vs Tauri | Decision rule in section 3, fixed in advance |
-| **M0.5** | Spike `codex app-server` (~1h) | Decides whether Phase 3 Task 9 survives |
+| **M0.5** | ~~Spike `codex app-server`~~ **done 2026-09-03** | Task 9 cut. See [`SPIKE-codex-app-server.md`](SPIKE-codex-app-server.md) |
 | **M1** | Finish Phase 3 in wave-devtools; add clipboard handoff command | Then freeze |
 | **M2** | Repo init: electron-vite, layered docs, fence in README | |
 | **M3** | Terminal: xterm + WebGL + node-pty, tabs, 2-up split, JSON layout | The real work |
