@@ -1,6 +1,6 @@
 # oikist — Design Decisions
 
-**Status:** pre-M0. No implementation started.
+**Status:** M3 complete — the terminal, tabs, split and layout restore all work.
 **Recorded:** 2026-09-03
 
 This is the decision record for oikist, a Windows-only, agent-native development
