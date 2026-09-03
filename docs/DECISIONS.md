@@ -253,7 +253,7 @@ project dies is building feature 12 of 40 forever and never switching off Wave.
 |---|---|---|
 | **M0** | Two-arm spike: Electron vs Tauri | Decision rule in section 3, fixed in advance |
 | **M0.5** | ~~Spike `codex app-server`~~ **done 2026-09-03** | Task 9 cut. See [`SPIKE-codex-app-server.md`](SPIKE-codex-app-server.md) |
-| **M1** | Finish Phase 3 in wave-devtools; add clipboard handoff command | Then freeze |
+| **M1** | ~~Finish Phase 3; add clipboard handoff~~ **done 2026-09-03** | Tasks 10–13 + `npm run handoff`. Frozen. One open call: poll perf at saturation |
 | **M2** | Repo init: electron-vite, layered docs, fence in README | |
 | **M3** | Terminal: xterm + WebGL + node-pty, tabs, 2-up split, JSON layout | The real work |
 | **M4** | Agent rail: domain modules in-process, own-first launch, attached discovery | |
