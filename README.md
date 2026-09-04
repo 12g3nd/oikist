@@ -6,7 +6,12 @@ objects here — not processes that happen to live inside terminal panes.
 *oikistēs* (οἰκιστής): the founder who leads settlers to new ground, and sets its
 boundaries.
 
-![The agent rail, with a Claude session oikist launched and is tracking through its own hooks](docs/screenshots/agent-rail.png)
+![Two Claude sessions in the agent rail: the one oikist launched reports IDLE through its own hooks, the one it merely found says STATE UNKNOWN](docs/screenshots/agent-rail.png)
+
+*Two agents, two levels of knowledge. The top row was launched by oikist, so it reports
+`IDLE` through its own hooks. The one below was found already running — its identity is
+real, but nothing has said what it is doing, so it says `STATE UNKNOWN` instead of
+guessing.*
 
 ---
 
