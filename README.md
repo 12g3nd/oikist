@@ -94,7 +94,7 @@ Every architectural decision is recorded with its reasoning in
 [`docs/DECISIONS.md`](docs/DECISIONS.md), including the ones that were **reversed**.
 
 **It started as a fork of Wave Terminal, and the fork was abandoned after measuring.**
-Wave is ~150k LOC, and the majority of its Go backend exists to solve remote
+The upstream is ~150k LOC, and the majority of its Go backend exists to solve remote
 connections — which this project never uses. Its terminal is `@xterm/xterm`; its editor
 is `monaco-editor`. Both are `npm install`. That left ~150k lines to inherit for nothing
 the product actually needed. [The reasoning is written down](docs/DECISIONS.md#1-greenfield-not-a-fork-of-wave-terminal).
@@ -158,10 +158,8 @@ dies is building feature 12 of 40 and never switching to it.
 ## Status
 
 All nine milestones are built and every feature above works. **It is not finished**, by
-its own definition of done:
-
-> All six switch-bar items work, **and oikist has been used for one full workday without
-> opening Wave.**
+its own definition of done: all six switch-bar items have to work, *and* oikist has to
+carry one full working day without falling back to the editor it replaces.
 
 The second half has not happened yet, and it is the half that finds what the tests
 cannot. Known issues are tracked in [`docs/KNOWN-ISSUES.md`](docs/KNOWN-ISSUES.md).
