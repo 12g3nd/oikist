@@ -1,7 +1,7 @@
 # oikist — Design Decisions
 
-**Status:** M0-M8 complete. All six switch-bar items are built. What remains is the
-other half of done: one full workday on oikist without opening Wave.
+**Status:** M0-M8 complete, spike included. All six switch-bar items are built. What
+remains is the other half of done: one full workday on oikist without opening Wave.
 **Recorded:** 2026-09-03
 
 This is the decision record for oikist, a Windows-only, agent-native development
@@ -71,9 +71,13 @@ the language choice only ever governs the host process. Against that:
 indexing, NPU inference — write *that piece* as a Rust sidecar or native module.
 Surgically, after measuring. Not as a foundation.
 
-## 3. Electron, pending a two-arm spike
+## 3. Electron — spike run, decision settled
 
-**Decided:** Electron, subject to M0 below.
+**Decided:** Electron. The M0 spike ran on 2026-09-03 and is recorded in
+[`M0-SPIKE.md`](M0-SPIKE.md). ConPTY caps a pty at ~0.95 MB/s while Electron's IPC
+bridge carries 299 MB/s, so the bridge runs at ~0.3% of capacity and the bottleneck sits
+upstream of both hosts. Tauri cannot be 25% better on a ceiling neither host owns.
+**Not to be revisited.**
 
 **Why.** "Electron is slow" conflates the engine with the apps built on it.
 Critically, **Tauri on Windows renders in WebView2, which is Chromium** — the
@@ -252,7 +256,7 @@ project dies is building feature 12 of 40 forever and never switching off Wave.
 
 | | Milestone | Notes |
 |---|---|---|
-| **M0** | Two-arm spike: Electron vs Tauri | Decision rule in section 3, fixed in advance |
+| **M0** | ~~Two-arm spike~~ **done 2026-09-03** | Electron confirmed. See [`M0-SPIKE.md`](M0-SPIKE.md) |
 | **M0.5** | ~~Spike `codex app-server`~~ **done 2026-09-03** | Task 9 cut. See [`SPIKE-codex-app-server.md`](SPIKE-codex-app-server.md) |
 | **M1** | ~~Finish Phase 3; add clipboard handoff~~ **done 2026-09-03** | Tasks 10–13 + `npm run handoff`. Frozen. One open call: poll perf at saturation |
 | **M2** | ~~Repo init~~ **done 2026-09-03** | electron-vite, React 19, sandboxed renderer over `app://` |
