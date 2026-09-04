@@ -356,3 +356,59 @@ test("a restored agent pane keeps its directory but is still dormant", () => {
   assert.equal(parsed.tabs[0]!.panes[0]!.cwd, PROJECT, "resuming must happen in the same project");
   assert.equal(parsed.tabs[0]!.panes[0]!.dormant, true);
 });
+
+test("an agent tab names its project, and keeps the provider after it", () => {
+  const next = ids("g");
+  const created = createTab(defaultLayout(next, PROJECT), next, "claude");
+  // The project leads because tab titles truncate from the end: with several agents
+  // open, the project is the half that has to survive the ellipsis.
+  assert.equal(created.tabs[1]!.title, "oikist · claude");
+});
+
+test("an agent tab with no project is named for its provider alone", () => {
+  const next = ids("h");
+  assert.equal(createTab(defaultLayout(next), next, "claude").tabs[1]!.title, "claude");
+});
+
+test("a tab stored before titles named projects is renamed on restore", () => {
+  // Otherwise the fix only reaches tabs opened after it, and the tabs already on screen
+  // keep saying `claude` for the rest of the day.
+  const parsed = parseLayout(
+    {
+      version: 1,
+      activeTabId: "t",
+      tabs: [
+        {
+          id: "t",
+          title: "claude",
+          activePaneId: "p",
+          panes: [{ id: "p", title: "", agent: "claude", cwd: PROJECT }]
+        }
+      ]
+    },
+    ids("m")
+  );
+  assert.equal(parsed.tabs[0]!.title, "oikist · claude");
+});
+
+test("a tab that already names its project is left alone", () => {
+  const stored = (title: string) => ({
+    version: 1,
+    activeTabId: "t",
+    tabs: [{ id: "t", title, activePaneId: "p", panes: [{ id: "p", title: "", cwd: PROJECT }] }]
+  });
+  assert.equal(parseLayout(stored("oikist"), ids("k")).tabs[0]!.title, "oikist");
+  assert.equal(parseLayout(stored("something else"), ids("k")).tabs[0]!.title, "something else");
+});
+
+test("a tab with no directory keeps the bare title it was stored with", () => {
+  const parsed = parseLayout(
+    {
+      version: 1,
+      activeTabId: "t",
+      tabs: [{ id: "t", title: "claude", activePaneId: "p", panes: [{ id: "p", title: "", agent: "claude" }] }]
+    },
+    ids("j")
+  );
+  assert.equal(parsed.tabs[0]!.title, "claude");
+});

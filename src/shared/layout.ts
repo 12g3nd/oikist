@@ -77,16 +77,25 @@ function newPane(nextId: IdFactory, kind: PaneKind, cwd?: string): PaneState {
   return { id, title: "", ...where };
 }
 
-/** The trailing directory name, which is what a person calls the project. */
+/**
+ * A tab's name: the project it is in, and the provider when it runs an agent.
+ *
+ * The project leads because a tab truncates from the end. With three agents open, three
+ * tabs reading `claude` say nothing at all — the project is the half worth keeping when
+ * there is only room for one.
+ */
 function labelFor(kind: PaneKind, cwd?: string): string {
-  if (kind !== "shell" || cwd === undefined || cwd === "") {
+  if (cwd === undefined || cwd === "") {
     return kind;
   }
   const leaf = cwd
     .split(/[/\\]+/)
     .filter((part) => part !== "" && !part.endsWith(":"))
     .at(-1);
-  return leaf === undefined || leaf === "" ? kind : leaf;
+  if (leaf === undefined || leaf === "") {
+    return kind;
+  }
+  return kind === "claude" ? `${leaf} · claude` : kind === "shell" ? leaf : kind;
 }
 
 function newTab(nextId: IdFactory, kind: PaneKind, cwd?: string): TabState {
@@ -321,7 +330,18 @@ function readTab(value: unknown): TabState | null {
   const activePaneId = panes.some((pane) => pane.id === value.activePaneId)
     ? (value.activePaneId as string)
     : panes[0]!.id;
-  return { id: value.id, title: readString(value.title, "shell"), panes, activePaneId };
+  // A title that is still just the kind was written before titles named their project.
+  // Re-derived rather than left as-is, so the tabs already on screen are fixed too and
+  // not only the ones opened afterwards. Titles are machine-generated — there is no
+  // rename — so nothing a person chose can be overwritten here.
+  const stored = readString(value.title, "shell");
+  const active = panes.find((pane) => pane.id === activePaneId) ?? panes[0]!;
+  const title = isBareKind(stored) ? labelFor(stored, active.cwd ?? active.path) : stored;
+  return { id: value.id, title, panes, activePaneId };
+}
+
+function isBareKind(title: string): title is PaneKind {
+  return title === "shell" || title === "claude" || title === "files" || title === "handoff";
 }
 
 /**
