@@ -1,10 +1,14 @@
 /**
  * Generates `build/icon.ico`, the app's taskbar and window icon.
  *
- * Written by hand rather than pulled from an image library: the whole icon is a dark
- * tile, a chevron and a cursor block, which is a few distance functions — cheaper than a
- * dependency, and it re-renders at every size so the 16px version is drawn rather than
- * downscaled from 256 and turned to mush.
+ * The mark is a rune built from O, I and K: a squared C, a full-height bar, and a pair
+ * of arms meeting at a point. Written as geometry rather than pulled from an image
+ * library — it is a handful of polygons, cheaper than a dependency, and it re-renders at
+ * every size, so the small versions are *drawn* rather than downscaled from 256 and
+ * turned to mush.
+ *
+ * It sits on a transparent ground in the accent colour. A dark tile disappeared into a
+ * dark taskbar, which is where this icon actually has to be found.
  *
  *   node scripts/make-icon.mjs
  */
@@ -13,83 +17,84 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const SIZES = [256, 64, 48, 32, 16];
+const SIZES = [256, 64, 48, 32, 24, 16];
 
-const BG = [15, 18, 17];       // --bg, the terminal ground
-const EDGE = [42, 51, 47];     // --border
-const MARK = [79, 199, 190];   // --accent
+const MARK = [79, 199, 190]; // --accent
 
-/** Distance from a point to a line segment, in normalised units. */
-function distanceToSegment(px, py, ax, ay, bx, by) {
+/** Sub-samples per axis. 4 means 16 coverage tests per pixel, which is plenty here. */
+const SAMPLES = 4;
+
+// --- the rune, in normalised coordinates with y running down ---
+//
+// Every gap is deliberate and none is smaller than it has to be: at 24px a gap of 0.05
+// is barely one pixel, and two forms that merge stop being three letters.
+
+const O_OUTER = { x0: 0.10, y0: 0.17, x1: 0.36, y1: 0.83, radius: 0.07 };
+const O_INNER = { x0: 0.205, y0: 0.285, x1: 0.38, y1: 0.715 };
+const I_BAR = { x0: 0.42, y0: 0.09, x1: 0.53, y1: 0.91 };
+const K_VERTEX = [0.635, 0.50];
+const K_UPPER = [0.88, 0.21];
+const K_LOWER = [0.88, 0.79];
+const K_HALF_WIDTH = 0.056;
+
+function inRect(x, y, r) {
+  return x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1;
+}
+
+/** A rectangle with all four corners rounded by `radius`. */
+function inRoundRect(x, y, r) {
+  if (!inRect(x, y, r)) {
+    return false;
+  }
+  const cx = Math.min(Math.max(x, r.x0 + r.radius), r.x1 - r.radius);
+  const cy = Math.min(Math.max(y, r.y0 + r.radius), r.y1 - r.radius);
+  return Math.hypot(x - cx, y - cy) <= r.radius;
+}
+
+/** A thick straight arm, built as a quad so its ends stay square rather than rounded. */
+function inArm(x, y, [ax, ay], [bx, by], half) {
   const dx = bx - ax;
   const dy = by - ay;
-  const lengthSquared = dx * dx + dy * dy;
-  const t = lengthSquared === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared));
-  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+  const length = Math.hypot(dx, dy);
+  // Distance along the arm, and distance out from its centre line.
+  const along = ((x - ax) * dx + (y - ay) * dy) / length;
+  const across = Math.abs((x - ax) * -dy + (y - ay) * dx) / length;
+  return along >= 0 && along <= length && across <= half;
 }
 
-/** Coverage of a rounded square, 1 inside, 0 outside, feathered at the edge. */
-function tileCoverage(x, y, radius, feather) {
-  const dx = Math.max(Math.abs(x - 0.5) - (0.5 - radius), 0);
-  const dy = Math.max(Math.abs(y - 0.5) - (0.5 - radius), 0);
-  const distance = Math.hypot(dx, dy) - radius;
-  return Math.max(0, Math.min(1, 0.5 - distance / feather));
+function inRune(x, y) {
+  const o = inRoundRect(x, y, O_OUTER) && !inRect(x, y, O_INNER);
+  return (
+    o ||
+    inRect(x, y, I_BAR) ||
+    inArm(x, y, K_VERTEX, K_UPPER, K_HALF_WIDTH) ||
+    inArm(x, y, K_VERTEX, K_LOWER, K_HALF_WIDTH)
+  );
 }
 
-function mix(base, over, alpha) {
-  return [
-    Math.round(base[0] + (over[0] - base[0]) * alpha),
-    Math.round(base[1] + (over[1] - base[1]) * alpha),
-    Math.round(base[2] + (over[2] - base[2]) * alpha)
-  ];
-}
-
-/**
- * One RGBA raster of the icon at `size`.
- *
- * The mark is a prompt chevron and a cursor block — a terminal, which is what the app
- * looks like, and two shapes is all that survives 16 pixels.
- */
+/** One RGBA raster at `size`, anti-aliased by super-sampling. */
 function render(size) {
   const pixels = Buffer.alloc(size * size * 4);
-  // A thicker stroke at small sizes: 1.5px of a 16px tile disappears, and an icon that
-  // reads as a grey smudge is worse than a blunt one.
-  const stroke = size <= 32 ? 0.085 : 0.065;
-  const feather = 1 / size;
-
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const u = (x + 0.5) / size;
-      const v = (y + 0.5) / size;
-
-      const tile = tileCoverage(u, v, 0.18, feather * 1.5);
-      if (tile <= 0) {
+  for (let py = 0; py < size; py += 1) {
+    for (let px = 0; px < size; px += 1) {
+      let hits = 0;
+      for (let sy = 0; sy < SAMPLES; sy += 1) {
+        for (let sx = 0; sx < SAMPLES; sx += 1) {
+          const x = (px + (sx + 0.5) / SAMPLES) / size;
+          const y = (py + (sy + 0.5) / SAMPLES) / size;
+          if (inRune(x, y)) {
+            hits += 1;
+          }
+        }
+      }
+      if (hits === 0) {
         continue;
       }
-
-      // A one-pixel lip of border colour, so the tile has an edge on a dark taskbar.
-      const inner = tileCoverage(u, v, 0.18, feather * 1.5) - tileCoverage(u, v, 0.17, feather * 1.5) * 0;
-      let colour = size >= 32 && inner > 0 && tile < 1 ? EDGE : BG;
-
-      const chevron = Math.min(
-        distanceToSegment(u, v, 0.30, 0.31, 0.50, 0.50),
-        distanceToSegment(u, v, 0.50, 0.50, 0.30, 0.69)
-      );
-      const onChevron = Math.max(0, Math.min(1, (stroke - chevron) / feather));
-
-      const cursor = Math.max(Math.abs(u - 0.655) - 0.095, Math.abs(v - 0.655) - 0.045);
-      const onCursor = Math.max(0, Math.min(1, -cursor / feather));
-
-      const ink = Math.max(onChevron, onCursor);
-      if (ink > 0) {
-        colour = mix(colour, MARK, ink);
-      }
-
-      const offset = (y * size + x) * 4;
-      pixels[offset] = colour[0];
-      pixels[offset + 1] = colour[1];
-      pixels[offset + 2] = colour[2];
-      pixels[offset + 3] = Math.round(tile * 255);
+      const offset = (py * size + px) * 4;
+      pixels[offset] = MARK[0];
+      pixels[offset + 1] = MARK[1];
+      pixels[offset + 2] = MARK[2];
+      pixels[offset + 3] = Math.round((hits / (SAMPLES * SAMPLES)) * 255);
     }
   }
   return pixels;
@@ -133,12 +138,13 @@ function toPng(pixels, size) {
   header[8] = 8; // bit depth
   header[9] = 6; // truecolour with alpha
 
-  // Every scanline carries filter type 0: the images are tiny and a filter would only
-  // trade clarity here for bytes nobody counts.
-  const raw = Buffer.alloc((size * 4 + 1) * size);
+  // Every scanline carries filter type 0: these images are tiny and a filter would trade
+  // clarity here for bytes nobody is counting.
+  const stride = size * 4 + 1;
+  const raw = Buffer.alloc(stride * size);
   for (let y = 0; y < size; y += 1) {
-    raw[y * (size * 4 + 1)] = 0;
-    pixels.copy(raw, y * (size * 4 + 1) + 1, y * size * 4, (y + 1) * size * 4);
+    raw[y * stride] = 0;
+    pixels.copy(raw, y * stride + 1, y * size * 4, (y + 1) * size * 4);
   }
 
   return Buffer.concat([
@@ -161,10 +167,11 @@ directory.writeUInt16LE(images.length, 4);
 let offset = directory.length;
 images.forEach((image, index) => {
   const entry = 6 + index * 16;
-  // 256 is written as 0: the field is one byte, so the largest size wraps to zero by
-  // the format's own convention.
-  directory[entry] = image.size === 256 ? 0 : image.size;
-  directory[entry + 1] = image.size === 256 ? 0 : image.size;
+  // 256 is written as 0: the field is one byte, so the largest size wraps to zero by the
+  // format's own convention.
+  const dimension = image.size === 256 ? 0 : image.size;
+  directory[entry] = dimension;
+  directory[entry + 1] = dimension;
   directory[entry + 2] = 0;
   directory[entry + 3] = 0;
   directory.writeUInt16LE(1, entry + 4);
@@ -174,7 +181,15 @@ images.forEach((image, index) => {
   offset += image.png.length;
 });
 
-const target = join(dirname(fileURLToPath(import.meta.url)), "..", "build", "icon.ico");
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const target = join(root, "build", "icon.ico");
 mkdirSync(dirname(target), { recursive: true });
 writeFileSync(target, Buffer.concat([directory, ...images.map((image) => image.png)]));
 console.log(`wrote ${target} (${SIZES.join(", ")} px)`);
+
+// The 256px face is also written as a PNG for the README, so the mark in the docs and
+// the mark on the taskbar can never drift apart.
+const readmeIcon = join(root, "docs", "screenshots", "icon.png");
+mkdirSync(dirname(readmeIcon), { recursive: true });
+writeFileSync(readmeIcon, images[0].png);
+console.log(`wrote ${readmeIcon}`);

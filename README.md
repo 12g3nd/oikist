@@ -1,3 +1,5 @@
+<img src="docs/screenshots/icon.png" alt="" width="72" align="right">
+
 # oikist
 
 **An agent-native development environment for Windows.** Coding agents are first-class
@@ -140,7 +142,7 @@ named IPC channels — there is no generic `invoke(channel)` escape hatch.
 **Stack:** TypeScript · Electron · React 19 · `@xterm/xterm` + WebGL · `node-pty` ·
 `electron-vite`. No database, one native dependency.
 
-**Testing split, deliberate and written down:** the domain layer is TDD'd — 110 tests
+**Testing split, deliberate and written down:** the domain layer is TDD'd — 132 tests
 covering pure reducers, untrusted-input parsers and the hook contract — while the UI is
 verified by looking at it, through an in-app capture affordance rather than desktop
 screenshots.
@@ -171,6 +173,19 @@ npm install
 npm run dev
 ```
 
+To build the app you actually pin to the taskbar:
+
+```
+npm run package
+```
+
+That writes `dist/win-unpacked/oikist.exe`, at a stable path — so it is pinned once and
+every later rebuild replaces the file the pin already resolves to.
+
 Requires Node 24+, Windows 10/11, and Claude Code and/or Codex on `PATH` for the agent
 features. `npm test` runs the suite; `npm run bench <fixture>` measures terminal
 throughput.
+
+## License
+
+[Apache 2.0](LICENSE). Built for one machine, but take what is useful.
