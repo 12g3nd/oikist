@@ -56,3 +56,15 @@ single home shell tab, so the first action of the day is picking a project from 
 directory chip.
 
 - 11:14 · started · —
+- 11:20-12:30 · three relaunches to pick up fixes · the morning went to fixing the tool
+  rather than using it. Two defects found and fixed: every pane started in the home
+  directory, and tabs were named for their kind so several read `claude`. Both were
+  found by looking at the app, not by using it — they are pre-test findings, and the
+  usage clock effectively starts at 12:30.
+- 12:30 · relaunched on the current build · closed on the normal window path; the shell
+  it owned was disposed rather than orphaned.
+- 13:48 · **the directory chip has gone unused.** Two tabs open after 1h20m — a shell and
+  a Claude agent — both still starting in the home directory, so both tabs are titled
+  for their kind. The morning's two fixes are both in the build and neither is doing
+  anything, because both depend on an explicit action that has not been taken. Open
+  question: was the chip not noticed, or not needed?
