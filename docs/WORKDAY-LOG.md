@@ -48,3 +48,11 @@ opened, believe the behaviour rather than the checklist.
 ## Log
 
 <!-- date · what happened · what it cost -->
+
+### Day 1 — 2026-09-04
+
+Started 11:14 on `a3d7a62`, with working directories landed that morning. Opened with a
+single home shell tab, so the first action of the day is picking a project from the
+directory chip.
+
+- 11:14 · started · —
