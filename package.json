@@ -16,7 +16,8 @@
     "verify": "npm run typecheck && npm test",
     "test": "node --import tsx --test --test-force-exit \"tests/*.test.ts\"",
     "bench": "node --import tsx tests/throughput.bench.mts",
-    "app": "electron ."
+    "app": "electron .",
+    "package": "npm run build && node scripts/make-icon.mjs && electron-builder --win --dir"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
@@ -24,6 +25,7 @@
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react-swc": "4.3.1",
     "electron": "^41.1.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0",
     "tsx": "^4.23.12",
     "typescript": "^5.9.3",

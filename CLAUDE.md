@@ -13,7 +13,19 @@ Codex) are first-class objects, not processes that happen to live in terminal pa
 
 ## Commands
 
-_None yet — this repo is pre-M0. Fill this in at M2._
+| | |
+|---|---|
+| `npm run dev` | electron-vite dev server |
+| `npm run build` | build main, preload and renderer into `out/` |
+| `npm run app` | run the built app (`electron .`) |
+| `npm run package` | build `dist/win-unpacked/oikist.exe` — the pinned daily driver |
+| `npm run verify` | typecheck then the full suite |
+| `npm test` | the suite alone |
+| `npm run bench <fixture>` | terminal throughput |
+
+`npm run package` writes to a stable path on purpose: the taskbar pin points at that
+file, so rebuilding replaces what the pin already resolves to. Reasoning in
+`docs/DECISIONS.md` section 9.
 
 ## Hard rules
 

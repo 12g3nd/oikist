@@ -261,6 +261,29 @@ until oikist can replace it.
 **Phase 3 finishes, then freezes.** Freeze means freeze — no Phase 4. The way this
 project dies is building feature 12 of 40 forever and never switching off Wave.
 
+## 9. Packaging: a real exe, because a daily driver has to be launchable
+
+**Decided 2026-09-04, from use.** A tool launched with `npx electron .` from a terminal
+only lives as long as that terminal. It cannot be pinned, and pinning `electron.exe`
+instead opens Electron's own welcome window. `electron-builder` produces `oikist.exe`.
+
+- **`dir`, not an installer.** The exe stays at `dist/win-unpacked/oikist.exe`, so it is
+  pinned once and every later `npm run package` replaces the file the pin already points
+  at. An installer would mean reinstalling to pick up a change, on a machine that
+  rebuilds this app several times a day.
+- **`asar: false`.** The hook relay is handed to Claude as a *path* and run by the real
+  node binary, which cannot read inside an archive; node-pty's native binding has the
+  same problem. Unpack rules and a path rewrite would solve both, but this app is
+  installed on one machine, where an archive buys nothing worth a class of silent
+  runtime failures.
+- **`npmRebuild: false`.** The rebuild fails — winpty's gyp file shells out to a
+  `GetCommitHash.bat` that is not on PATH — and has nothing to do: the binding from
+  `npm install` is the one dev has been loading under this same Electron all along.
+  Verified by opening a shell in the packaged app, not by reading.
+
+`electron-builder` is a devDependency and a build tool, not a runtime dependency, so
+rule 3 in `CLAUDE.md` — one native module — is untouched.
+
 ---
 
 ## Ladder

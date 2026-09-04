@@ -1,0 +1,35 @@
+appId: dev.oikist.app
+productName: oikist
+directories:
+  output: dist
+  buildResources: build
+
+# asar is off deliberately.
+#
+# The hook relay is handed to Claude as a *path*, and Claude runs it with the real node
+# binary — which cannot read inside an archive. node-pty's native binding has the same
+# problem from the other side. Both are solvable with unpack rules and a path rewrite,
+# but this app is installed on exactly one machine, where an archive buys nothing worth
+# a class of silent runtime failures.
+asar: false
+
+# node-pty is not rebuilt at package time.
+#
+# The rebuild fails outright — winpty's gyp file shells out to `GetCommitHash.bat`, which
+# is not on PATH here — and it has nothing to do: the binding installed by `npm install`
+# is the one `npm run dev` and `npx electron .` have been loading under this same Electron
+# all along. Rebuilding would produce the artifact that already exists. Verified by
+# opening a shell in the packaged app, which is the only proof that matters.
+npmRebuild: false
+
+files:
+  - out/**
+  - resources/**
+  - package.json
+
+win:
+  icon: build/icon.ico
+  # `dir` rather than an installer: the exe stays at a stable path, so it can be pinned
+  # once and every later rebuild replaces the file the pin already points at.
+  target:
+    - dir
