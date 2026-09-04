@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { app, BrowserWindow, ipcMain, net, protocol, shell } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, net, protocol, shell } from "electron";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 
 import { IPC, type PtyCreateOptions, type PtyCreated, type RuntimeInfo } from "../shared/ipc.js";
@@ -11,6 +11,8 @@ import { AgentDiscovery } from "./agents/discovery.js";
 import { startHookServer, type HookServer } from "./agents/hook-server.js";
 import { AgentLauncher } from "./agents/launcher.js";
 import { LayoutStore, type WindowBounds } from "./layout-store.js";
+import { readWorkingState } from "./agents/git.js";
+import { claudeLimits, readCodexLimits } from "./agents/limits.js";
 import { listDirectory, readTextFile } from "./files.js";
 import { PtyManager } from "./pty.js";
 
@@ -294,6 +296,16 @@ function publishAgents(): void {
 const discovery = new AgentDiscovery({ onResult: () => publishAgents() });
 
 ipcMain.handle(IPC.agentsList, () => snapshot());
+
+ipcMain.handle(IPC.handoffState, (_event, cwd: string) => readWorkingState(cwd));
+
+// The clipboard is the only thing a handoff writes to. Delivering it into an agent is
+// the user's move, deliberately: pasting is where they get to read it first.
+ipcMain.handle(IPC.handoffCopy, (_event, text: string) => {
+  clipboard.writeText(typeof text === "string" ? text : "");
+});
+
+ipcMain.handle(IPC.providerLimits, async () => [claudeLimits(), await readCodexLimits()]);
 
 // The viewer is read-only: there is no write, rename, or delete channel to reach for.
 ipcMain.handle(IPC.filesHome, () => app.getPath("home"));

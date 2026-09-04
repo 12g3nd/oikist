@@ -25,7 +25,7 @@ export interface PaneState {
   /** Absent for a plain shell. Set when this pane runs a coding agent. */
   readonly agent?: "claude";
   /** Absent for a terminal. Set when this pane shows something else. */
-  readonly view?: "files";
+  readonly view?: "files" | "handoff";
   /** The directory a file pane is browsing, so it reopens where it was. */
   readonly path?: string;
   /** The agent session this pane last ran, so it can be resumed rather than restarted. */
@@ -53,14 +53,17 @@ export interface LayoutState {
   readonly activeTabId: string | null;
 }
 
-export type PaneKind = "shell" | "claude" | "files";
+export type PaneKind = "shell" | "claude" | "files" | "handoff";
 
 function newPane(nextId: IdFactory, kind: PaneKind): PaneState {
   const id = nextId();
   if (kind === "claude") {
     return { id, title: "", agent: "claude" };
   }
-  return kind === "files" ? { id, title: "", view: "files" } : { id, title: "" };
+  if (kind === "files" || kind === "handoff") {
+    return { id, title: "", view: kind };
+  }
+  return { id, title: "" };
 }
 
 function newTab(nextId: IdFactory, kind: PaneKind): TabState {
@@ -227,11 +230,11 @@ function readPane(value: unknown): PaneState | null {
   if (!isRecord(value) || typeof value.id !== "string" || value.id === "") {
     return null;
   }
-  if (value.view === "files") {
+  if (value.view === "files" || value.view === "handoff") {
     return {
       id: value.id,
       title: readString(value.title, ""),
-      view: "files",
+      view: value.view,
       ...(typeof value.path === "string" && value.path !== "" ? { path: value.path } : {})
     };
   }

@@ -1,5 +1,7 @@
 import type { AgentSummary } from "./agents.js";
 import type { FileContent, FileEntry } from "./files.js";
+import type { WorkingState } from "./handoff.js";
+import type { ProviderLimits } from "./limits.js";
 
 /**
  * The contract between the main process and the renderer.
@@ -28,6 +30,10 @@ export const IPC = {
   filesList: "files:list",
   filesRead: "files:read",
   filesHome: "files:home",
+
+  handoffState: "handoff:state",
+  handoffCopy: "handoff:copy",
+  providerLimits: "provider:limits",
 
   agentsList: "agents:list",
   /** Main to renderer, once per discovery pass. */
@@ -91,6 +97,13 @@ export interface OikistBridge {
     readonly home: () => Promise<string>;
     readonly list: (path: string) => Promise<DirectoryListing>;
     readonly read: (path: string) => Promise<FileContent>;
+  };
+  readonly handoff: {
+    /** Reads the git working state a handoff carries. */
+    readonly state: (cwd: string) => Promise<WorkingState>;
+    /** Puts the composed block on the clipboard. */
+    readonly copy: (text: string) => Promise<void>;
+    readonly limits: () => Promise<readonly ProviderLimits[]>;
   };
   readonly agents: {
     readonly list: () => Promise<AgentsSnapshot>;

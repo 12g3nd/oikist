@@ -18,6 +18,7 @@ import {
 } from "../../shared/layout.js";
 import { AgentRail } from "./AgentRail.js";
 import { FileViewer } from "./FileViewer.js";
+import { Handoff } from "./Handoff.js";
 import { TerminalPane } from "./Terminal.js";
 
 const newId = (): string => crypto.randomUUID();
@@ -164,6 +165,14 @@ export function App(): React.JSX.Element {
           >
             + FILES
           </button>
+          <button
+            className="tabbar-action tabbar-action--files"
+            type="button"
+            onClick={() => apply((current) => createTab(current, newId, "handoff"))}
+            title="Move a task between providers"
+          >
+            + HANDOFF
+          </button>
         </div>
 
         {/*
@@ -184,7 +193,12 @@ export function App(): React.JSX.Element {
                 onFocusCapture={() => apply((current) => setActivePane(current, tab.id, pane.id))}
                 onMouseDown={() => apply((current) => setActivePane(current, tab.id, pane.id))}
               >
-                {pane.view === "files" ? (
+                {pane.view === "handoff" ? (
+                  <Handoff
+                    {...(pane.path === undefined ? {} : { cwd: pane.path })}
+                    onCwdChange={(next) => apply((current) => setPanePath(current, tab.id, pane.id, next))}
+                  />
+                ) : pane.view === "files" ? (
                   <FileViewer
                     {...(pane.path === undefined ? {} : { path: pane.path })}
                     onPathChange={(next) => apply((current) => setPanePath(current, tab.id, pane.id, next))}

@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 
 import type { FileContent } from "../shared/files.js";
+import type { WorkingState } from "../shared/handoff.js";
+import type { ProviderLimits } from "../shared/limits.js";
 import {
   IPC,
   type OikistBridge,
@@ -51,6 +53,11 @@ const bridge: OikistBridge = {
     home: () => ipcRenderer.invoke(IPC.filesHome) as Promise<string>,
     list: (path: string) => ipcRenderer.invoke(IPC.filesList, path) as Promise<DirectoryListing>,
     read: (path: string) => ipcRenderer.invoke(IPC.filesRead, path) as Promise<FileContent>
+  },
+  handoff: {
+    state: (cwd: string) => ipcRenderer.invoke(IPC.handoffState, cwd) as Promise<WorkingState>,
+    copy: (text: string) => ipcRenderer.invoke(IPC.handoffCopy, text) as Promise<void>,
+    limits: () => ipcRenderer.invoke(IPC.providerLimits) as Promise<ProviderLimits[]>
   },
   agents: {
     list: () => ipcRenderer.invoke(IPC.agentsList) as Promise<AgentsSnapshot>,
