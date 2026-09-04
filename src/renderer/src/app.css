@@ -208,17 +208,43 @@ body {
 .tabbar {
   display: flex;
   align-items: stretch;
-  gap: 1px;
   flex: none;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+}
+
+/*
+ * The tabs scroll; the controls beside them do not.
+ *
+ * One flex row for both shrank every tab until its title truncated, and truncation takes
+ * the end — so `oikist · claude` became `oikist · cl…`, losing the part that says which
+ * project it is. Tabs now keep their natural width and this strip scrolls instead.
+ */
+.tabbar-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
   overflow-x: auto;
-  scrollbar-width: thin;
+  /* No scrollbar: it added a second row of chrome under a bar that is one row tall, and
+     the active tab is scrolled into view on its own, which is the case that mattered. */
+  scrollbar-width: none;
+}
+
+.tabbar-tabs::-webkit-scrollbar { display: none; }
+
+.tabbar-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  flex: none;
 }
 
 .tab {
   display: flex;
   align-items: center;
+  flex: none;
   gap: 8px;
   padding: 7px 10px 7px 14px;
   min-width: 0;
@@ -272,6 +298,8 @@ body {
   border: 0;
   background: none;
   padding: 0 12px;
+  flex: none;
+  white-space: nowrap;
   color: var(--fg-dim);
   cursor: pointer;
 }
@@ -293,7 +321,9 @@ body {
 .tabbar-cwd {
   display: flex;
   align-items: center;
+  flex: none;
   margin-left: 8px;
+  margin-block: 4px;
   padding: 0 10px;
   border: 1px solid var(--border);
   background: none;
@@ -319,8 +349,10 @@ body {
   text-overflow: ellipsis;
 }
 
+/* A fixed gap, not `margin-left: auto` — this group no longer shares a row with the
+   tabs, so there is no free space for an auto margin to absorb. */
 .tabbar-action--agent {
-  margin-left: auto;
+  margin-left: 12px;
   font-size: 10px;
   letter-spacing: 0.12em;
   color: var(--accent);

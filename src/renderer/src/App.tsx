@@ -119,6 +119,14 @@ export function App(): React.JSX.Element {
     return () => window.removeEventListener("keydown", onKey);
   }, [apply]);
 
+  // The tab strip scrolls once there are more tabs than fit, so a newly created tab —
+  // which takes focus immediately — would otherwise be made active somewhere off the
+  // right edge, looking like the click did nothing.
+  const activeTabElement = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    activeTabElement.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [layout?.activeTabId, layout?.tabs.length]);
+
   if (layout === null) {
     return <div className="shell shell--loading">restoring…</div>;
   }
@@ -131,10 +139,18 @@ export function App(): React.JSX.Element {
       <AgentRail />
 
       <main className="main">
-        <div className="tabbar" role="tablist" aria-label="Terminal tabs">
+        <div className="tabbar">
+          {/*
+            Tabs scroll on their own so the controls beside them stay put. Sharing one
+            flex row squeezed every tab until its title truncated — `oikist · claude`
+            became `oikist · cl…`, which is the half worth keeping cut off — and wrapped
+            the buttons onto a second line.
+          */}
+          <div className="tabbar-tabs" role="tablist" aria-label="Terminal tabs">
           {layout.tabs.map((tab) => (
             <div
               key={tab.id}
+              ref={tab.id === activeTab.id ? activeTabElement : null}
               className={`tab${tab.id === activeTab.id ? " tab--active" : ""}`}
               role="tab"
               aria-selected={tab.id === activeTab.id}
@@ -162,7 +178,9 @@ export function App(): React.JSX.Element {
               </button>
             </div>
           ))}
+          </div>
 
+          <div className="tabbar-actions">
           {/*
             Where new panes will start. Shown rather than assumed: everything opened from
             this bar inherits it, so it has to be visible before it is inherited.
@@ -217,6 +235,7 @@ export function App(): React.JSX.Element {
           >
             + HANDOFF
           </button>
+          </div>
         </div>
 
         {/*

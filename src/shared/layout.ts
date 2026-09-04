@@ -95,7 +95,9 @@ function labelFor(kind: PaneKind, cwd?: string): string {
   if (leaf === undefined || leaf === "") {
     return kind;
   }
-  return kind === "claude" ? `${leaf} · claude` : kind === "shell" ? leaf : kind;
+  // A shell is the ordinary case and needs no qualifier; everything else says what it is
+  // after the project, since a bare `files` in a two-project day names nothing.
+  return kind === "shell" ? leaf : `${leaf} · ${kind}`;
 }
 
 function newTab(nextId: IdFactory, kind: PaneKind, cwd?: string): TabState {

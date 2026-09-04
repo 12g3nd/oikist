@@ -412,3 +412,31 @@ test("a tab with no directory keeps the bare title it was stored with", () => {
   );
   assert.equal(parsed.tabs[0]!.title, "claude");
 });
+
+test("a files or handoff tab names its project too", () => {
+  const next = ids("v");
+  const base = defaultLayout(next, PROJECT);
+  assert.equal(createTab(base, next, "files").tabs[1]!.title, "oikist · files");
+  assert.equal(createTab(base, next, "handoff").tabs[1]!.title, "oikist · handoff");
+});
+
+test("a stored files tab is renamed from the directory it was browsing", () => {
+  // A file pane records `path` rather than `cwd` — the directory it browses is the one a
+  // terminal beside it would start in, so it is what names the tab.
+  const parsed = parseLayout(
+    {
+      version: 1,
+      activeTabId: "t",
+      tabs: [
+        {
+          id: "t",
+          title: "files",
+          activePaneId: "p",
+          panes: [{ id: "p", title: "", view: "files", path: PROJECT }]
+        }
+      ]
+    },
+    ids("w")
+  );
+  assert.equal(parsed.tabs[0]!.title, "oikist · files");
+});
