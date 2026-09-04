@@ -1,83 +1,173 @@
 # oikist
 
-An agent-native development environment for Windows.
+**An agent-native development environment for Windows.** Coding agents are first-class
+objects here — not processes that happen to live inside terminal panes.
 
-Coding agents are first-class objects here, not processes that happen to live inside
-terminal panes. oikist answers the question you actually have when three agents are
-running: **which one needs me, where is it, and what has it done?** — and lets work
-move between Claude Code and Codex without rebuilding context by hand.
+*oikistēs* (οἰκιστής): the founder who leads settlers to new ground, and sets its
+boundaries.
 
-**Status:** pre-M0. Design settled, nothing implemented. See
-[`docs/DECISIONS.md`](docs/DECISIONS.md).
+![The agent rail, with a Claude session oikist launched and is tracking through its own hooks](docs/screenshots/agent-rail.png)
 
-## Why this exists
+---
 
-Existing tools treat the agent as a feature in an IDE. On a normal working day here
-the split is roughly **75% agent panes, 15% human shell, 10% everything else** — so
-the agent is not a feature, it is the primary object, and the terminal is one pane
-type among several.
+## The problem it exists for
 
-Two problems fall out of that, and neither is solved anywhere today:
+On a normal working day here the split is roughly **75% agent panes, 15% human shell,
+10% everything else**. At that ratio the agent is not a feature inside an IDE — it is
+the primary object, and the terminal is one pane type among several.
 
-- **Attention.** With several agents running, knowing which one is blocked on you —
-  and jumping straight to it — is the difference between parallel work and
-  thrashing.
-- **Routing and handoff.** Providers hit rate limits at different times. Moving a
-  task from one to the other currently means reconstructing context by hand, which
-  is slow enough that you usually just wait instead.
+Two problems fall out of that, and neither is solved well anywhere today:
+
+**Attention.** With several agents running, knowing *which one is blocked on you* — and
+getting to it — is the difference between parallel work and thrashing.
+
+**Routing and handoff.** Providers hit rate limits at different times. Moving a task
+between them means rebuilding context by hand, which is slow enough that you usually
+just wait instead.
+
+## What it does
+
+### Agents are objects, and the app knows how much it knows
+
+Every row states **how it is known**, because a status panel that presents a guess as a
+fact stops being believed the first time it is wrong:
+
+- **`launched`** — oikist started it, assigned its session id with `--session-id`, and
+  installed hooks for it. Its state is *reported*, not inferred.
+- **`~attached`** — found running via `claude agents --json`. Identity is real; nothing
+  has said what it is doing, so the row says `STATE UNKNOWN`.
+
+Agents oikist launches report `IDLE` / `WORKING` / `NEEDS PERMISSION` through their own
+hooks, and name the subagents they spawn. Nothing is ever written to your global
+`~/.claude/settings.json` — hooks go in a per-launch `--settings` file, so an agent you
+start by hand behaves exactly as it did before oikist existed.
+
+### A terminal that is actually a terminal
+
+![Tabs and a 2-up split, with layout restored from disk](docs/screenshots/terminal.png)
+
+xterm with the WebGL renderer, `node-pty` over ConPTY. Output is coalesced into roughly
+one frame before crossing the IPC boundary, which collapses ~425,000 pty reads into
+~5,400 messages on a 30 MB stream. Tabs, an optional 2-up split, and a layout that comes
+back after a restart.
+
+### Moving a task between providers
+
+![The handoff view showing live Codex rate limits and a composed handoff](docs/screenshots/handoff.png)
+
+Codex answers exactly how much is left — used percentages and reset times for both
+windows, read from its app server. Claude publishes no usage command at all, so its row
+says so rather than inventing a number.
+
+The handoff block carries the task, the working state, the changed files, and an
+**agent-authored note about what was already tried** — and never a transcript, which is
+mostly noise and would spend the receiving agent's context on turn one. A missing note
+blocks the copy, because a handoff without "what I tried and why it failed" just makes
+the second agent repeat the first agent's dead ends.
+
+### Restore never starts an agent
+
+![A restored agent pane waiting to be resumed rather than relaunching itself](docs/screenshots/restore.png)
+
+Opening the app must not spend quota, and an agent resuming work nobody is watching is
+worse than one that waits. Every restored agent pane comes back **dormant** — the flag
+is imposed by the parser, not read from the file, so no stored layout can cause a launch
+on startup. It shows what it was and the session it can resume, and starts on a click.
+
+### A read-only file viewer
+
+![The file viewer reading oikist's own IPC contract](docs/screenshots/files.png)
+
+Read-only by decision, not omission: there is no write, rename or delete channel behind
+it to reach for. Bounded reads, binaries refused rather than rendered as garbage.
+
+---
+
+## What is interesting about how it was built
+
+Every architectural decision is recorded with its reasoning in
+[`docs/DECISIONS.md`](docs/DECISIONS.md), including the ones that were **reversed**.
+
+**It started as a fork of Wave Terminal, and the fork was abandoned after measuring.**
+Wave is ~150k LOC, and the majority of its Go backend exists to solve remote
+connections — which this project never uses. Its terminal is `@xterm/xterm`; its editor
+is `monaco-editor`. Both are `npm install`. That left ~150k lines to inherit for nothing
+the product actually needed. [The reasoning is written down](docs/DECISIONS.md#1-greenfield-not-a-fork-of-wave-terminal).
+
+**The Electron-vs-Tauri question was settled by measurement, with the rule fixed in
+advance.** It turned out neither host was the bottleneck: the same file streams at
+**26.9 MB/s through a plain pipe and under 1 MB/s through a pty**, while Electron's IPC
+bridge carries **299 MB/s**. ConPTY is the ceiling, and it sits upstream of both
+candidates. [`docs/M0-SPIKE.md`](docs/M0-SPIKE.md).
+
+**Findings that cost nothing but changed the design.** `claude doctor` prints its
+complete hook-event list when it meets an unknown one, so the whole surface is
+enumerable without spending a token. Claude 2.1.238 silently dropped `status` and
+`waitingFor` from its live-session files, which killed the predecessor's entire
+poll-based activity inference — a good argument for reading supported APIs instead of
+scraping. [`docs/KNOWN-ISSUES.md`](docs/KNOWN-ISSUES.md).
+
+**Mistakes are recorded, not tidied away.** A published claim that pty batching cost 45%
+throughput was wrong — it compared two different harnesses rather than two consumers,
+and batching is in fact *faster*. The wrong version and the reason it was wrong are both
+kept in the spike record. A shutdown defect that took an afternoon turned out to be three
+lines of my own code, after eight other suspects were ruled out; the postmortem is more
+reusable than the fix.
+
+## Architecture
+
+```
+main process                                    renderer
+─────────────────────────────────────────       ──────────────────────
+PtyManager        node-pty over ConPTY,          xterm + WebGL
+                  8 ms output coalescing   ──►   tabs, 2-up split
+AgentLauncher     --session-id, per-launch       agent rail
+                  --settings hooks               read-only file viewer
+AgentDiscovery    claude agents --json (5 s)     handoff composer
+hook listener     127.0.0.1:0, per-run token
+LayoutStore       plain JSON, atomic writes
+```
+
+The renderer is sandboxed with context isolation, served over a registered `app://`
+scheme so a strict CSP actually applies, and reaches the OS only through explicitly
+named IPC channels — there is no generic `invoke(channel)` escape hatch.
+
+**Stack:** TypeScript · Electron · React 19 · `@xterm/xterm` + WebGL · `node-pty` ·
+`electron-vite`. No database, one native dependency.
+
+**Testing split, deliberate and written down:** the domain layer is TDD'd — 110 tests
+covering pure reducers, untrusted-input parsers and the hook contract — while the UI is
+verified by looking at it, through an in-app capture affordance rather than desktop
+screenshots.
 
 ## Scope
 
-**Windows only.** Built for one machine — a ThinkPad T14 Gen 6, 32GB. This is not an
-apology or a temporary state; it is the scope. Most agent tooling is mac-first, so
-being deliberately Windows-native is a feature.
+**Windows only**, built for one machine. Not an apology and not temporary — most agent
+tooling is mac-first, so this is a deliberate niche.
 
-### Not in v1
+**Out of v1:** SSH/remote · multi-platform · Monaco *editing* · command palette · project
+dashboards · local/NPU models · unsupervised agent-to-agent messaging · worktree
+comparison · plugins · theming. That fence is load-bearing; the way a project like this
+dies is building feature 12 of 40 and never switching to it.
 
-SSH/remote · multi-platform · Monaco *editing* · command palette · project
-dashboards · NPU/local models · unsupervised agent-to-agent messaging · worktree
-comparison · plugin systems · theming beyond one look.
+## Status
 
-This fence is load-bearing. The way a project like this dies is building feature 12
-of 40 forever and never actually switching to it. Changing the fence means editing
-[`docs/DECISIONS.md`](docs/DECISIONS.md) first.
+All nine milestones are built and every feature above works. **It is not finished**, by
+its own definition of done:
 
-### In v1
+> All six switch-bar items work, **and oikist has been used for one full workday without
+> opening Wave.**
 
-1. A terminal fast enough for `npm run build` output
-2. Connection between agents — Claude and Codex
-3. Tabs that come back after restart
-4. The ability to see individual files
-5. A terminal that is still a terminal, but feels much smoother
-6. Seeing subagents
+The second half has not happened yet, and it is the half that finds what the tests
+cannot. Known issues are tracked in [`docs/KNOWN-ISSUES.md`](docs/KNOWN-ISSUES.md).
 
-**Done** means all of the above work and oikist has been used for one full workday
-without opening Wave Terminal.
+## Running it
 
-## Relationship to Wave Terminal
+```
+npm install
+npm run dev
+```
 
-oikist is **not** a fork of [Wave Terminal](https://github.com/wavetermdev/waveterm),
-though it began as one. The fork was created, evaluated, and abandoned: Wave's
-architecture is built substantially around remote connections, which this project
-never uses, and its terminal and editor are `@xterm/xterm` and `monaco-editor` —
-libraries anyone can use directly. That left inheriting ~150k lines to gain nothing
-the product actually needed. The full reasoning is in
-[`docs/DECISIONS.md`](docs/DECISIONS.md) section 1.
-
-Wave remains excellent, and its source remains the best available reference on
-ConPTY handling and tiling layout on Windows. It is read, not depended on.
-
-The predecessor project, `wave-devtools`, was a plugin/daemon for Wave that proved
-three features against real daily use — Ports, Sessions, and Agent Attention. Its
-domain layer migrates into oikist.
-
-## Stack
-
-TypeScript · Electron · React · `@xterm/xterm` + WebGL · `node-pty` · `electron-vite`
-
-Electron is pending a measured spike against Tauri; the decision rule is fixed in
-advance in [`docs/DECISIONS.md`](docs/DECISIONS.md) section 3.
-
-## License
-
-TBD.
+Requires Node 24+, Windows 10/11, and Claude Code and/or Codex on `PATH` for the agent
+features. `npm test` runs the suite; `npm run bench <fixture>` measures terminal
+throughput.

@@ -75,7 +75,11 @@ async function captureIfRequested(window: BrowserWindow): Promise<void> {
         `(() => { const el = document.querySelector(${JSON.stringify(clickSelector)}); if (el instanceof HTMLElement) { el.click(); return true; } return false; })()`
       );
       console.log(`[click] ${clickSelector} -> ${clicked === true ? "clicked" : "NO MATCH"}`);
-      await new Promise((resolve) => setTimeout(resolve, 900));
+      // Separate from the pre-click delay: what the click starts may take far longer to
+      // become visible than the page took to render in the first place — an agent
+      // booting, for instance.
+      const clickSettle = Number(process.env.OIKIST_CLICK_SETTLE ?? "900");
+      await new Promise((resolve) => setTimeout(resolve, Number.isFinite(clickSettle) ? clickSettle : 900));
     }
     const image = await window.webContents.capturePage();
     await writeFile(target, image.toPNG());

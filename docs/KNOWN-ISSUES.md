@@ -134,3 +134,24 @@ session-end
 So a pane can report *what* it is busy with, not merely that it is busy. The label comes
 from `subagent_type` in the hook payload; it is the only payload field the relay
 forwards, because everything else there is prompt or tool text.
+
+---
+
+## Open
+
+### A failed agent launch closes its own pane silently
+
+**Found at the README screenshots, 2026-09-04.**
+
+`TerminalPane`'s `onExit` calls `unsplitPane` unconditionally, which closes the tab when
+it was the only pane. For a shell that is right — you typed `exit`, the pane should go.
+For an agent that fails to start it is wrong: Claude exits immediately when its session
+limit is exhausted, the pane closes within a second, and the tab disappears with it.
+Clicking **+ CLAUDE** then looks like nothing happened at all.
+
+Observed twice while capturing screenshots: the click registered, the tab appeared, and
+by capture time both the tab and the rail row were gone.
+
+**Fix:** an agent pane that exits should stay and say why — exit code, and the last of
+its output — rather than removing itself. A pane that exits in under a second or with a
+non-zero code has failed, not finished, and the two deserve different treatment.
