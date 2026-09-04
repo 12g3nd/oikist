@@ -15,7 +15,8 @@
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "verify": "npm run typecheck && npm test",
     "test": "node --import tsx --test --test-force-exit \"tests/*.test.ts\"",
-    "bench": "node --import tsx tests/throughput.bench.mts"
+    "bench": "node --import tsx tests/throughput.bench.mts",
+    "app": "electron ."
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

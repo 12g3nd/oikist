@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -192,6 +192,39 @@ export class AgentLauncher {
   /** Called when a pane closes, so a killed agent leaves the rail. */
   forget(sessionId: string): boolean {
     return this.#launched.delete(sessionId);
+  }
+
+  /**
+   * Removes hook settings directories left by earlier runs.
+   *
+   * `dispose` clears the current run's directory on a clean quit, but a killed process
+   * leaves its behind — and each holds a settings file naming a bearer token. Eleven had
+   * accumulated after a day of testing. Only directories older than a day are touched,
+   * so a second instance running right now keeps its own.
+   */
+  static async sweepStaleSettings(): Promise<number> {
+    const root = tmpdir();
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    let removed = 0;
+    try {
+      for (const name of await readdir(root)) {
+        if (!name.startsWith("oikist-hooks-")) {
+          continue;
+        }
+        const path = join(root, name);
+        try {
+          if ((await stat(path)).mtimeMs < cutoff) {
+            await rm(path, { recursive: true, force: true });
+            removed += 1;
+          }
+        } catch {
+          // A directory that vanished or is not ours to remove; skip it.
+        }
+      }
+    } catch {
+      // No temp directory to read is not a reason to fail startup.
+    }
+    return removed;
   }
 
   async dispose(): Promise<void> {

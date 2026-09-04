@@ -349,6 +349,11 @@ void app.whenReady().then(async () => {
     }
   });
   launcher = new AgentLauncher(hookServer.endpoint, hookServer.token);
+  void AgentLauncher.sweepStaleSettings().then((removed) => {
+    if (removed > 0) {
+      console.log(`swept ${removed} stale hook settings directories`);
+    }
+  });
   layoutStore = LayoutStore.in(app.getPath("userData"));
   const stored = await layoutStore.load();
   createWindow(stored.window);
