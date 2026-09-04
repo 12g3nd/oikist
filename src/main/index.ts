@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { app, BrowserWindow, clipboard, ipcMain, net, protocol, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, net, protocol, shell } from "electron";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 
 import { IPC, type PtyCreateOptions, type PtyCreated, type RuntimeInfo } from "../shared/ipc.js";
@@ -334,6 +334,24 @@ ipcMain.handle(IPC.providerLimits, async () => [claudeLimits(), await readCodexL
 ipcMain.handle(IPC.filesHome, () => app.getPath("home"));
 ipcMain.handle(IPC.filesList, (_event, path: string) => listDirectory(path));
 ipcMain.handle(IPC.filesRead, (_event, path: string) => readTextFile(path));
+
+// Choosing a project is the one place the app needs a path it was not given. The picker
+// is the OS's own, so no directory listing crosses the bridge and a dismissed dialog is
+// a null rather than an error.
+ipcMain.handle(IPC.filesChoose, async (event, startIn: unknown): Promise<string | null> => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  const options = {
+    title: "Open project",
+    properties: ["openDirectory" as const],
+    ...(typeof startIn === "string" && startIn !== "" ? { defaultPath: startIn } : {})
+  };
+  // Attached to its window when there is one, so the dialog is modal to the app rather
+  // than a free-floating window that can be lost behind it.
+  const result = window === null
+    ? await dialog.showOpenDialog(options)
+    : await dialog.showOpenDialog(window, options);
+  return result.canceled ? null : (result.filePaths[0] ?? null);
+});
 
 ipcMain.handle(IPC.layoutLoad, async (): Promise<unknown> => (await layoutStore?.load())?.layout);
 

@@ -118,6 +118,18 @@ Two traps already hit here, both worth remembering:
 - **`[hidden]` needs `display: none !important`.** The attribute works through a UA rule
   that any explicit `display` in our stylesheet outranks, so a hidden tab kept rendering
   its terminal below the visible one.
+- **A pane's `cwd` is where it started, not where the shell is now.** It is inherited by
+  anything opened from the tab bar and read once, when the pty is created. Do not try to
+  keep it in step with the prompt: that needs shell integration this project does not
+  have, and a directory label that disagrees with the prompt is worse than none.
+
+## Windows paths through the agent's own shell
+
+Writing a backslash into a file through the Bash tool loses one level of escaping, quoted
+heredocs included. `"C:\\Users\\SJ"` in a heredoc lands as `C:\Users\SJ` in the source,
+which JavaScript then reads as `C:UsersSJ`, and `/[/\\]+/` lands as an unterminated
+regex. It cost two cycles on the working-directory work. Write path literals and
+backslash-bearing regexes with the Edit tool, or build them with `String.fromCharCode(92)`.
 
 ## How agent state reaches the app
 

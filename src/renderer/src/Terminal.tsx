@@ -28,6 +28,8 @@ const THEME = {
 interface TerminalPaneProps {
   /** Marks which pane owns keyboard focus; only the focused pane takes input. */
   readonly focused: boolean;
+  /** Where the shell or agent starts. Absent means the home directory. */
+  readonly cwd?: string;
   /** Absent for a plain shell; set to run a coding agent in this pane. */
   readonly agent?: "claude";
   /** Resume this agent session rather than starting a new one. */
@@ -46,6 +48,7 @@ interface TerminalPaneProps {
  */
 export function TerminalPane({
   focused,
+  cwd,
   agent,
   resumeSessionId,
   onAgentSession,
@@ -79,6 +82,11 @@ export function TerminalPane({
   resumeRef.current = resumeSessionId;
   const onAgentSessionRef = useRef(onAgentSession);
   onAgentSessionRef.current = onAgentSession;
+
+  // A ref for the same reason: a running shell cannot be moved to another directory, so
+  // this is only read when the pty is created. Watching it would restart the pane.
+  const cwdRef = useRef(cwd);
+  cwdRef.current = cwd;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -141,11 +149,16 @@ export function TerminalPane({
     });
 
     const resume = resumeRef.current;
+    const where = cwdRef.current;
+    const start = {
+      cols: term.cols,
+      rows: term.rows,
+      ...(where === undefined || where === "" ? {} : { cwd: where })
+    };
     const request = agent === undefined
-      ? { cols: term.cols, rows: term.rows }
+      ? start
       : {
-          cols: term.cols,
-          rows: term.rows,
+          ...start,
           agent,
           ...(resume === undefined ? {} : { resumeSessionId: resume })
         };

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { statSync } from "node:fs";
 import { homedir } from "node:os";
 
 import type { WebContents } from "electron";
@@ -25,6 +26,25 @@ const FLUSH_MS = 8;
  * scrollback would do anyway, rather than letting the main process exhaust memory.
  */
 const MAX_PENDING_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Where a pane starts, with a directory that has since gone away treated as absent.
+ *
+ * A working directory is persisted, so it can name a project that was renamed, moved, or
+ * deleted between sessions. `node-pty` throws on a missing cwd, which would turn a
+ * restored tab into a pane that only shows a spawn error — so a stale directory costs
+ * the convenience and nothing else.
+ */
+function workingDirectory(cwd: string | undefined): string {
+  if (cwd === undefined || cwd === "") {
+    return homedir();
+  }
+  try {
+    return statSync(cwd).isDirectory() ? cwd : homedir();
+  } catch {
+    return homedir();
+  }
+}
 
 interface Session {
   readonly pty: IPty;
@@ -95,7 +115,7 @@ export class PtyManager {
       name: "xterm-256color",
       cols: Math.max(1, Math.trunc(options.cols)),
       rows: Math.max(1, Math.trunc(options.rows)),
-      cwd: options.cwd ?? homedir(),
+      cwd: workingDirectory(options.cwd),
       env: process.env as Record<string, string>,
       // Uses node-pty's bundled conpty.dll instead of the OS ConPTY.
       //

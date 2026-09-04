@@ -30,6 +30,8 @@ export const IPC = {
   filesList: "files:list",
   filesRead: "files:read",
   filesHome: "files:home",
+  /** Opens the OS folder picker so a project can be chosen without typing a path. */
+  filesChoose: "files:choose",
 
   handoffState: "handoff:state",
   handoffCopy: "handoff:copy",
@@ -97,6 +99,8 @@ export interface OikistBridge {
     readonly home: () => Promise<string>;
     readonly list: (path: string) => Promise<DirectoryListing>;
     readonly read: (path: string) => Promise<FileContent>;
+    /** The chosen directory, or null when the picker was dismissed. */
+    readonly choose: (startIn?: string) => Promise<string | null>;
   };
   readonly handoff: {
     /** Reads the git working state a handoff carries. */

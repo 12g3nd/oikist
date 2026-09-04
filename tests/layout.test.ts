@@ -9,6 +9,7 @@ import {
   parseLayout,
   setActivePane,
   setActiveTab,
+  activeCwd,
   splitTab,
   setPaneSession,
   unsplitPane,
@@ -263,4 +264,95 @@ test("a newly created agent tab is live, not dormant", () => {
   const created = createTab(defaultLayout(next), next, "claude");
   assert.equal(created.tabs[1]!.panes[0]!.dormant, undefined, "an explicit click starts immediately");
   assert.equal(created.tabs[1]!.panes[0]!.agent, "claude");
+});
+
+// --- working directories ---
+//
+// Every pane used to start in the home directory, so a real day meant retyping `cd` in
+// each one and every launched agent began outside the project it was meant to work on.
+
+const PROJECT = "C:\\Users\\SJ\\oikist";
+
+test("a new tab starts where the active tab is, rather than at home", () => {
+  const next = ids("c");
+  const first = defaultLayout(next, PROJECT);
+  const second = createTab(first, next);
+
+  assert.equal(second.tabs[1]!.panes[0]!.cwd, PROJECT);
+  assert.equal(activeCwd(second), PROJECT);
+});
+
+test("an agent tab inherits the directory too, so it launches inside the project", () => {
+  const next = ids("a");
+  const created = createTab(defaultLayout(next, PROJECT), next, "claude");
+  assert.equal(created.tabs[1]!.panes[0]!.cwd, PROJECT);
+});
+
+test("an explicit directory wins over the inherited one", () => {
+  const next = ids("e");
+  const other = "D:\\work\\other";
+  const created = createTab(defaultLayout(next, PROJECT), next, "shell", other);
+  assert.equal(created.tabs[1]!.panes[0]!.cwd, other);
+});
+
+test("a split pane opens beside its sibling, in the same directory", () => {
+  const next = ids("s");
+  const start = defaultLayout(next, PROJECT);
+  const split = splitTab(start, start.tabs[0]!.id, next);
+  assert.equal(split.tabs[0]!.panes[1]!.cwd, PROJECT);
+});
+
+test("a file pane's browsed directory is what the next tab inherits", () => {
+  const next = ids("f");
+  const start = createTab(defaultLayout(next), next, "files", PROJECT);
+  assert.equal(start.tabs[1]!.panes[0]!.path, PROJECT, "a file pane browses it rather than runs in it");
+  assert.equal(activeCwd(start), PROJECT);
+});
+
+test("a shell tab is named for its directory, so several tabs are told apart", () => {
+  const next = ids("n");
+  assert.equal(defaultLayout(next, PROJECT).tabs[0]!.title, "oikist");
+  assert.equal(defaultLayout(next).tabs[0]!.title, "shell", "with no directory the kind is the name");
+  assert.equal(defaultLayout(next, "C:\\").tabs[0]!.title, "shell", "a drive root has no leaf to name");
+});
+
+test("a stored directory is restored, and a malformed one is dropped", () => {
+  const stored = {
+    version: 1,
+    activeTabId: "t",
+    tabs: [
+      {
+        id: "t",
+        title: "oikist",
+        activePaneId: "p",
+        panes: [
+          { id: "p", title: "", cwd: PROJECT },
+          { id: "q", title: "", cwd: 7 }
+        ]
+      }
+    ]
+  };
+  const parsed = parseLayout(stored, ids("z"));
+  assert.equal(parsed.tabs[0]!.panes[0]!.cwd, PROJECT);
+  assert.equal(parsed.tabs[0]!.panes[1]!.cwd, undefined, "a non-string directory is not carried through");
+});
+
+test("a restored agent pane keeps its directory but is still dormant", () => {
+  const parsed = parseLayout(
+    {
+      version: 1,
+      activeTabId: "t",
+      tabs: [
+        {
+          id: "t",
+          title: "claude",
+          activePaneId: "p",
+          panes: [{ id: "p", title: "", agent: "claude", cwd: PROJECT, dormant: false }]
+        }
+      ]
+    },
+    ids("d")
+  );
+  assert.equal(parsed.tabs[0]!.panes[0]!.cwd, PROJECT, "resuming must happen in the same project");
+  assert.equal(parsed.tabs[0]!.panes[0]!.dormant, true);
 });

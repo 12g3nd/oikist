@@ -136,6 +136,17 @@ you look at one at a time and glance at the rail for the rest. This also removes
 need for dockview or a custom ~4k-line tiler. Add tiling later, against a working
 app, if it is ever actually missed.
 
+**Working directory: per pane, inherited, and never changed under a running pane.**
+A pane records where it started; anything opened from the tab bar — a tab, a split, an
+agent, a file viewer, a handoff — inherits that directory from the focused pane. Two
+consequences are deliberate. A pane's stored directory is *where it began*, not where the
+shell is now: a prompt drifts with every `cd`, and tracking that needs shell integration
+that does not exist here, so showing a live directory would mean showing one the prompt
+disagrees with. And choosing a project opens a **new** tab rather than moving the current
+one, because a running shell cannot be relocated. A stored directory that has since been
+deleted falls back to home rather than failing to spawn — losing the convenience, never
+the pane.
+
 **Persistence: plain JSON, atomic writes.** Persisted: window/layout state, open
 tabs, per-pane agent metadata (provider, sessionId, cwd, branch, last known state),
 project list, rate-limit reset times. Volume is tens to hundreds of records. Session

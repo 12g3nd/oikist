@@ -28,6 +28,14 @@ export interface PaneState {
   readonly view?: "files" | "handoff";
   /** The directory a file pane is browsing, so it reopens where it was. */
   readonly path?: string;
+  /**
+   * Where a terminal or agent pane starts.
+   *
+   * Persisted, so a project tab reopens in its project rather than in the home
+   * directory. A shell's real directory drifts as you `cd`; this is only where it began,
+   * which is what a new pane needs to inherit.
+   */
+  readonly cwd?: string;
   /** The agent session this pane last ran, so it can be resumed rather than restarted. */
   readonly sessionId?: string;
   /**
@@ -55,29 +63,56 @@ export interface LayoutState {
 
 export type PaneKind = "shell" | "claude" | "files" | "handoff";
 
-function newPane(nextId: IdFactory, kind: PaneKind): PaneState {
+function newPane(nextId: IdFactory, kind: PaneKind, cwd?: string): PaneState {
   const id = nextId();
+  const where = cwd === undefined || cwd === "" ? {} : { cwd };
   if (kind === "claude") {
-    return { id, title: "", agent: "claude" };
+    return { id, title: "", agent: "claude", ...where };
   }
+  // A file pane's directory is the one it browses, which is the same directory a
+  // terminal beside it would start in.
   if (kind === "files" || kind === "handoff") {
-    return { id, title: "", view: kind };
+    return { id, title: "", view: kind, ...(where.cwd === undefined ? {} : { path: where.cwd }) };
   }
-  return { id, title: "" };
+  return { id, title: "", ...where };
 }
 
-function newTab(nextId: IdFactory, kind: PaneKind): TabState {
-  const pane = newPane(nextId, kind);
-  return { id: nextId(), title: kind, panes: [pane], activePaneId: pane.id };
+/** The trailing directory name, which is what a person calls the project. */
+function labelFor(kind: PaneKind, cwd?: string): string {
+  if (kind !== "shell" || cwd === undefined || cwd === "") {
+    return kind;
+  }
+  const leaf = cwd
+    .split(/[/\\]+/)
+    .filter((part) => part !== "" && !part.endsWith(":"))
+    .at(-1);
+  return leaf === undefined || leaf === "" ? kind : leaf;
 }
 
-export function defaultLayout(nextId: IdFactory): LayoutState {
-  const tab = newTab(nextId, "shell");
+function newTab(nextId: IdFactory, kind: PaneKind, cwd?: string): TabState {
+  const pane = newPane(nextId, kind, cwd);
+  return { id: nextId(), title: labelFor(kind, cwd), panes: [pane], activePaneId: pane.id };
+}
+
+export function defaultLayout(nextId: IdFactory, cwd?: string): LayoutState {
+  const tab = newTab(nextId, "shell", cwd);
   return { version: LAYOUT_VERSION, tabs: [tab], activeTabId: tab.id };
 }
 
-export function createTab(layout: LayoutState, nextId: IdFactory, kind: PaneKind = "shell"): LayoutState {
-  const tab = newTab(nextId, kind);
+/**
+ * Adds a tab, inheriting a working directory when none is given.
+ *
+ * Inheriting from the active pane is what makes a project tab useful: open a second
+ * terminal while working in a repository and it starts in that repository, rather than
+ * in the home directory where nothing you are doing lives.
+ */
+export function createTab(
+  layout: LayoutState,
+  nextId: IdFactory,
+  kind: PaneKind = "shell",
+  cwd?: string
+): LayoutState {
+  const tab = newTab(nextId, kind, cwd ?? activeCwd(layout));
   return { ...layout, tabs: [...layout.tabs, tab], activeTabId: tab.id };
 }
 
@@ -106,7 +141,7 @@ export function splitTab(layout: LayoutState, tabId: string, nextId: IdFactory):
   if (tab === undefined || tab.panes.length >= MAX_PANES_PER_TAB) {
     return layout;
   }
-  const pane = newPane(nextId, "shell");
+  const pane = newPane(nextId, "shell", paneCwd(tab));
   return {
     ...layout,
     tabs: layout.tabs.map((candidate) =>
@@ -216,6 +251,17 @@ export function closeTab(layout: LayoutState, tabId: string, nextId: IdFactory):
   return { ...layout, tabs, activeTabId };
 }
 
+/** Where the focused pane started, if it has a directory at all. */
+export function activeCwd(layout: LayoutState): string | undefined {
+  const tab = layout.tabs.find((candidate) => candidate.id === layout.activeTabId);
+  return tab === undefined ? undefined : paneCwd(tab);
+}
+
+function paneCwd(tab: TabState): string | undefined {
+  const active = tab.panes.find((pane) => pane.id === tab.activePaneId);
+  return active?.cwd ?? active?.path ?? tab.panes.find((pane) => pane.cwd !== undefined)?.cwd;
+}
+
 // --- reading untrusted stored state ---
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -238,9 +284,10 @@ function readPane(value: unknown): PaneState | null {
       ...(typeof value.path === "string" && value.path !== "" ? { path: value.path } : {})
     };
   }
+  const cwd = typeof value.cwd === "string" && value.cwd !== "" ? { cwd: value.cwd } : {};
   // Only a known provider survives the read; anything else becomes a plain shell.
   if (value.agent !== "claude") {
-    return { id: value.id, title: readString(value.title, "") };
+    return { id: value.id, title: readString(value.title, ""), ...cwd };
   }
   // Every restored agent pane is dormant, without exception. This is the single point
   // that guarantees opening the app never starts an agent.
@@ -249,6 +296,7 @@ function readPane(value: unknown): PaneState | null {
     title: readString(value.title, ""),
     agent: "claude",
     dormant: true,
+    ...cwd,
     ...(typeof value.sessionId === "string" && UUID.test(value.sessionId)
       ? { sessionId: value.sessionId }
       : {})

@@ -7,6 +7,8 @@ interface FileViewerProps {
   /** The directory being browsed. Persisted, so a pane reopens where it was. */
   readonly path?: string;
   readonly onPathChange: (path: string) => void;
+  /** Opens a terminal in the directory being browsed, which is usually why you found it. */
+  readonly onOpenHere?: (path: string) => void;
 }
 
 function parentOf(path: string): string | null {
@@ -21,7 +23,7 @@ function parentOf(path: string): string | null {
  * is deliberately no save, rename or delete anywhere in this component, and no channel
  * behind it that could perform one.
  */
-export function FileViewer({ path, onPathChange }: FileViewerProps): React.JSX.Element {
+export function FileViewer({ path, onPathChange, onOpenHere }: FileViewerProps): React.JSX.Element {
   const [listing, setListing] = useState<DirectoryListing | null>(null);
   const [content, setContent] = useState<FileContent | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +85,16 @@ export function FileViewer({ path, onPathChange }: FileViewerProps): React.JSX.E
               </button>
             ))}
         </nav>
+        {onOpenHere !== undefined && listing !== null && (
+          <button
+            type="button"
+            className="files-here"
+            onClick={() => onOpenHere(listing.path)}
+            title={`Open a terminal in ${listing.path}`}
+          >
+            TERMINAL HERE
+          </button>
+        )}
         <button
           type="button"
           className="files-up"

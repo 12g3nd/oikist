@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   MAX_PANES_PER_TAB,
+  activeCwd,
   closeTab,
   createTab,
   defaultLayout,
@@ -22,6 +23,12 @@ import { Handoff } from "./Handoff.js";
 import { TerminalPane } from "./Terminal.js";
 
 const newId = (): string => crypto.randomUUID();
+
+/** The trailing directory name — the part a person uses to say which project. */
+function leafOf(path: string): string {
+  const parts = path.split(/[/\\]+/).filter((part) => part !== "");
+  return parts.at(-1) ?? path;
+}
 
 export function App(): React.JSX.Element {
   const [layout, setLayout] = useState<LayoutState | null>(null);
@@ -61,6 +68,29 @@ export function App(): React.JSX.Element {
 
   const activeTabRef = useRef<string | null>(null);
   activeTabRef.current = layout?.activeTabId ?? null;
+  const layoutRef = useRef<LayoutState | null>(null);
+  layoutRef.current = layout;
+
+  /**
+   * Opens a project: the OS picker, then a shell tab already inside it.
+   *
+   * A new tab rather than a change to this one, because a shell that is already running
+   * cannot be moved — pretending otherwise would show a directory the prompt disagrees
+   * with. Everything opened afterwards inherits it.
+   */
+  const openProject = useCallback((): void => {
+    const startIn = layoutRef.current === null ? undefined : activeCwd(layoutRef.current);
+    void window.oikist.files
+      .choose(startIn)
+      .then((chosen) => {
+        if (chosen !== null) {
+          apply((current) => createTab(current, newId, "shell", chosen));
+        }
+      })
+      .catch(() => {
+        /* a picker that will not open is not worth an error state in the tab bar */
+      });
+  }, [apply]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -94,6 +124,7 @@ export function App(): React.JSX.Element {
   }
 
   const activeTab = layout.tabs.find((tab) => tab.id === layout.activeTabId) ?? layout.tabs[0]!;
+  const here = activeCwd(layout);
 
   return (
     <div className="shell">
@@ -131,6 +162,19 @@ export function App(): React.JSX.Element {
               </button>
             </div>
           ))}
+
+          {/*
+            Where new panes will start. Shown rather than assumed: everything opened from
+            this bar inherits it, so it has to be visible before it is inherited.
+          */}
+          <button
+            className="tabbar-cwd"
+            type="button"
+            onClick={openProject}
+            title={`${here ?? "Home directory"} — click to open another project in a new tab`}
+          >
+            <span className="tabbar-cwd-label">{here === undefined ? "~" : leafOf(here)}</span>
+          </button>
 
           <button
             className="tabbar-action"
@@ -202,12 +246,14 @@ export function App(): React.JSX.Element {
                   <FileViewer
                     {...(pane.path === undefined ? {} : { path: pane.path })}
                     onPathChange={(next) => apply((current) => setPanePath(current, tab.id, pane.id, next))}
+                    onOpenHere={(next) => apply((current) => createTab(current, newId, "shell", next))}
                   />
                 ) : pane.dormant === true ? (
                   <DormantAgent pane={pane} onResume={() => apply((current) => wakePane(current, tab.id, pane.id))} />
                 ) : (
                   <TerminalPane
                     focused={tab.id === activeTab.id && pane.id === tab.activePaneId}
+                    {...(pane.cwd === undefined ? {} : { cwd: pane.cwd })}
                     {...(pane.agent === undefined ? {} : { agent: pane.agent })}
                     {...(pane.sessionId === undefined ? {} : { resumeSessionId: pane.sessionId })}
                     onAgentSession={(sessionId) =>
@@ -242,6 +288,11 @@ function DormantAgent({ pane, onResume }: { pane: PaneState; onResume: () => voi
           ? "Not running. Its conversation is on disk and can be picked up where it stopped."
           : "Not running. No previous session was recorded, so this starts a new one."}
       </p>
+      {pane.cwd !== undefined && (
+        <p className="dormant-where" title={pane.cwd}>
+          in <code>{leafOf(pane.cwd)}</code>
+        </p>
+      )}
       <button className="dormant-action" type="button" onClick={onResume}>
         {resumable ? "RESUME SESSION" : "START AGENT"}
       </button>

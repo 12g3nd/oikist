@@ -113,3 +113,33 @@ test("disposeAll leaves no session behind", async () => {
     false
   );
 });
+
+test("a pane starts in the directory it was given", async () => {
+  const { sent, send } = collector();
+  const manager = new PtyManager(send);
+  const id = await manager.create({ cols: 80, rows: 24, cwd: process.cwd() });
+
+  manager.write(id, "cd\r");
+  const leaf = process.cwd().split(/[/\\]+/).filter((part) => part !== "").at(-1)!;
+  await until(
+    () => sent.some((m) => m.channel === IPC.ptyData && (m.payload.chunk ?? "").includes(leaf)),
+    "the shell to report the requested directory"
+  );
+  manager.dispose(id);
+});
+
+test("a directory that no longer exists costs the convenience, not the pane", async () => {
+  // A working directory is persisted, so it can name a project that was since renamed,
+  // moved or deleted. node-pty throws on a missing cwd, which would turn a restored tab
+  // into nothing but a spawn error.
+  const { sent, send } = collector();
+  const manager = new PtyManager(send);
+  const id = await manager.create({ cols: 80, rows: 24, cwd: "Q:\\no\\such\\project" });
+
+  manager.write(id, "echo oikist-fallback-marker\r");
+  await until(
+    () => sent.some((m) => m.channel === IPC.ptyData && (m.payload.chunk ?? "").includes("oikist-fallback-marker")),
+    "the shell to start anyway"
+  );
+  manager.dispose(id);
+});

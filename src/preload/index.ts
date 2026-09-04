@@ -52,7 +52,8 @@ const bridge: OikistBridge = {
   files: {
     home: () => ipcRenderer.invoke(IPC.filesHome) as Promise<string>,
     list: (path: string) => ipcRenderer.invoke(IPC.filesList, path) as Promise<DirectoryListing>,
-    read: (path: string) => ipcRenderer.invoke(IPC.filesRead, path) as Promise<FileContent>
+    read: (path: string) => ipcRenderer.invoke(IPC.filesRead, path) as Promise<FileContent>,
+    choose: (startIn?: string) => ipcRenderer.invoke(IPC.filesChoose, startIn) as Promise<string | null>
   },
   handoff: {
     state: (cwd: string) => ipcRenderer.invoke(IPC.handoffState, cwd) as Promise<WorkingState>,

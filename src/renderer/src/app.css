@@ -283,6 +283,42 @@ body {
   letter-spacing: 0.12em;
 }
 
+/*
+ * The directory everything opened from this bar will start in.
+ *
+ * Bordered rather than plain like its neighbours: it reports state as well as offering
+ * an action, and a `+` that silently inherits a directory is worse than no directory
+ * at all.
+ */
+.tabbar-cwd {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tabbar-cwd::before {
+  content: "▸";
+  margin-right: 6px;
+  color: var(--accent);
+}
+
+.tabbar-cwd:hover { color: var(--fg); border-color: var(--accent); }
+.tabbar-cwd:focus-visible { outline: 1px solid var(--accent); outline-offset: -2px; }
+
+.tabbar-cwd-label {
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .tabbar-action--agent {
   margin-left: auto;
   font-size: 10px;
@@ -406,6 +442,14 @@ body {
 .dormant-action:hover { background: #14302d; }
 .dormant-action:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 
+.dormant-where {
+  margin: 0;
+  color: var(--fg-dim);
+  font-size: 11px;
+}
+
+.dormant-where code { color: var(--fg); }
+
 .dormant-id {
   color: var(--fg-dim);
   font-size: 10px;
@@ -457,6 +501,25 @@ body {
 
 .files-crumb:hover { color: var(--accent); }
 .files-crumb:focus-visible { outline: 1px solid var(--accent); }
+
+.files-here {
+  margin-left: auto;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  padding: 1px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.files-here:hover { color: var(--accent); border-color: var(--accent); }
+.files-here:focus-visible { outline: 1px solid var(--accent); }
+
+/* Sits beside the button above when one is present, and takes the gap when it is not. */
+.files-here + .files-up { margin-left: 6px; }
 
 .files-up {
   margin-left: auto;
