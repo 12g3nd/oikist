@@ -173,3 +173,38 @@ export function mergeAgents(
   }
   return [...byId.values()].sort(compareAgents);
 }
+
+/** How long a session must last before ending counts as finishing rather than failing. */
+export const AGENT_FAILED_BEFORE_MS = 2000;
+
+export interface AgentExit {
+  readonly failed: boolean;
+  readonly message: string;
+}
+
+/**
+ * Describes why an agent session ended.
+ *
+ * Two things mean failure rather than completion: a non-zero exit code, and ending
+ * almost immediately. The second matters because a provider that is out of quota exits
+ * cleanly and at once — code 0, under a second — and calling that "finished" would hide
+ * the only thing the user needs to know.
+ */
+export function describeAgentExit(exitCode: unknown, ranForMs: number): AgentExit {
+  const seconds = Math.max(0, Math.round(ranForMs / 1000));
+  // node-pty does not always supply one; "code undefined" tells the reader nothing.
+  const code = typeof exitCode === "number" && Number.isFinite(exitCode) ? exitCode : null;
+  if (ranForMs < AGENT_FAILED_BEFORE_MS) {
+    return {
+      failed: true,
+      message:
+        code === 0 || code === null
+          ? "Exited immediately. The output above is usually the reason."
+          : `Exited immediately with code ${code}.`
+    };
+  }
+  if (code !== 0 && code !== null) {
+    return { failed: true, message: `Exited with code ${code} after ${seconds}s.` };
+  }
+  return { failed: false, message: `Session ended after ${seconds}s.` };
+}

@@ -137,21 +137,31 @@ forwards, because everything else there is prompt or tool text.
 
 ---
 
-## Open
+### An agent pane closed itself, hiding why it stopped
 
-### A failed agent launch closes its own pane silently
+**Found and fixed 2026-09-04.**
 
-**Found at the README screenshots, 2026-09-04.**
+Clicking **+ CLAUDE** created a tab that vanished within seconds, leaving no trace. Two
+defects, one hiding the other.
 
-`TerminalPane`'s `onExit` calls `unsplitPane` unconditionally, which closes the tab when
-it was the only pane. For a shell that is right — you typed `exit`, the pane should go.
-For an agent that fails to start it is wrong: Claude exits immediately when its session
-limit is exhausted, the pane closes within a second, and the tab disappears with it.
-Clicking **+ CLAUDE** then looks like nothing happened at all.
+**The visible one:** `TerminalPane`'s `onExit` called `unsplitPane` unconditionally. For
+a shell that is right — you typed `exit`. For an agent it threw away the pane whose
+output *was* the error message. An agent pane now never removes itself; it keeps its
+output and shows an exit notice with a **Start again** action.
 
-Observed twice while capturing screenshots: the click registered, the tab appeared, and
-by capture time both the tab and the rail row were gone.
+**The one that fix revealed:** with the pane no longer disappearing, it showed
+`No conversation found with session ID: 94451447-...`. The pane reports its new session
+id upward, that comes straight back down as the `resumeSessionId` prop, and the prop was
+in the effect's dependency array — so the effect re-ran and relaunched the agent with
+`--resume` for a session created seconds earlier and never written to disk. Claude
+exited, and the pane closed itself before anyone could read why.
 
-**Fix:** an agent pane that exits should stay and say why — exit code, and the last of
-its output — rather than removing itself. A pane that exits in under a second or with a
-non-zero code has failed, not finished, and the two deserve different treatment.
+**This is the third instance of the same defect** — a caller-supplied value in an
+effect's dependency array. `onExit` recreated ptys at M3, `onPathChange` cleared the file
+being read at M6, and `resumeSessionId` relaunched agents here. The rule in `CLAUDE.md`
+now covers props as well as callbacks: if the value round-trips through the parent, hold
+it in a ref and keep it out of the deps.
+
+**Also corrected:** the first diagnosis of the vanishing tab was "Claude is out of
+quota". It was not. The exit message deliberately no longer names a cause — it points at
+the pane's own output, which is where the real one was all along.

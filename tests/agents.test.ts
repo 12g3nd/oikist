@@ -5,6 +5,8 @@ import {
   ATTENTION_ORDER,
   compareAgents,
   parseClaudeAgents,
+  AGENT_FAILED_BEFORE_MS,
+  describeAgentExit,
   mergeAgents,
   projectFromCwd,
   type AgentSummary
@@ -152,4 +154,43 @@ test("a launched agent the poller has not seen yet still appears", () => {
 
 test("attached agents with no launch record are untouched", () => {
   assert.deepEqual(mergeAgents([], [ATTACHED]), [ATTACHED]);
+});
+
+// --- an agent pane must never hide why it stopped ---
+
+test("a clean exit after real work counts as finishing", () => {
+  const exit = describeAgentExit(0, 45_000);
+  assert.equal(exit.failed, false);
+  assert.match(exit.message, /ended after 45s/);
+});
+
+test("a non-zero code is a failure however long it ran", () => {
+  const exit = describeAgentExit(1, 60_000);
+  assert.equal(exit.failed, true);
+  assert.match(exit.message, /code 1/);
+});
+
+test("exiting immediately is a failure even with code 0", () => {
+  // A provider that cannot start exits cleanly and at once. Reporting that as a normal
+  // finish would hide the only thing worth knowing. The message points at the pane's own
+  // output rather than naming a cause: the first guess at that cause was "out of quota",
+  // and the real one turned out to be a bad --resume argument.
+  const exit = describeAgentExit(0, 300);
+  assert.equal(exit.failed, true);
+  assert.match(exit.message, /Exited immediately/);
+  assert.match(exit.message, /output above/);
+});
+
+test("the immediate-failure boundary is the documented one", () => {
+  assert.equal(describeAgentExit(0, AGENT_FAILED_BEFORE_MS - 1).failed, true);
+  assert.equal(describeAgentExit(0, AGENT_FAILED_BEFORE_MS).failed, false);
+});
+
+test("a missing exit code never renders as the word undefined", () => {
+  for (const code of [undefined, null, Number.NaN, "1"]) {
+    const exit = describeAgentExit(code, 30_000);
+    assert.equal(exit.message.includes("undefined"), false, JSON.stringify(code));
+    assert.equal(exit.message.includes("NaN"), false, JSON.stringify(code));
+  }
+  assert.equal(describeAgentExit(undefined, 300).failed, true, "an immediate exit is still a failure");
 });

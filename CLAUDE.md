@@ -142,11 +142,13 @@ stops being believed the first time it is wrong.
 - **The hook relay must run under real Node, not Electron.** `process.execPath` is
   `electron.exe`, which behaves as Node only with an env var a hook definition cannot
   set, so the launcher resolves `node` from PATH.
-- **Never put a caller's inline callback in an effect's dependency array.** This has
-  bitten twice. `onExit` on the terminal recreated the pty on every parent render,
+- **Never put a caller-supplied value in an effect's dependency array** if it can round
+  trip through the parent. This has now bitten three times. `onExit` on the terminal recreated the pty on every parent render,
   spawning duplicate shells and duplicate rail rows; `onPathChange` on the file viewer
   re-ran its effect and cleared the file being read, so opening a file looked like
-  nothing happening. Hold the callback in a ref and keep it out of the deps.
+  nothing happening; and `resumeSessionId` — which the pane itself reports upward — came
+  back down and relaunched the agent with `--resume` for a session that did not exist
+  yet. Hold it in a ref and keep it out of the deps.
 - **A no-op state change must return the identical object.** A reducer that rebuilds
   the layout for an unchanged value makes a component that reports state upward loop
   forever: report, re-render, report again.

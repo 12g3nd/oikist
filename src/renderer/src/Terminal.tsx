@@ -1,4 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import { describeAgentExit, type AgentExit } from "../../shared/agents.js";
 
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -60,6 +62,21 @@ export function TerminalPane({
   // the rail. The pane must be created exactly once per pane identity.
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
+
+  // An agent pane never removes itself. A shell that exits was told to; an agent that
+  // exits may have failed, and its last output is the error message — closing the pane
+  // throws away the only explanation the user is going to get.
+  const [exited, setExited] = useState<AgentExit | null>(null);
+  const [runKey, setRunKey] = useState(0);
+
+  // A ref, and emphatically not a dependency. The pane reports its new session id
+  // upward, which comes straight back down as this prop — so as a dependency it re-ran
+  // the effect and relaunched the agent with `--resume <id>` for a session created
+  // seconds earlier and never written to disk. Claude answered "No conversation found
+  // with session ID", exited, and the pane closed itself. Read at run time, never
+  // watched.
+  const resumeRef = useRef(resumeSessionId);
+  resumeRef.current = resumeSessionId;
   const onAgentSessionRef = useRef(onAgentSession);
   onAgentSessionRef.current = onAgentSession;
 
@@ -111,19 +128,26 @@ export function TerminalPane({
         term.write(chunk);
       }
     });
+    const startedAt = performance.now();
     const offExit = window.oikist.pty.onExit(({ id, exitCode }) => {
-      if (id === ptyId) {
-        onExitRef.current?.(exitCode);
+      if (id !== ptyId) {
+        return;
       }
+      if (agent === undefined) {
+        onExitRef.current?.(exitCode);
+        return;
+      }
+      setExited(describeAgentExit(exitCode, performance.now() - startedAt));
     });
 
+    const resume = resumeRef.current;
     const request = agent === undefined
       ? { cols: term.cols, rows: term.rows }
       : {
           cols: term.cols,
           rows: term.rows,
           agent,
-          ...(resumeSessionId === undefined ? {} : { resumeSessionId })
+          ...(resume === undefined ? {} : { resumeSessionId: resume })
         };
     void window.oikist.pty.create(request).then((created) => {
       if (disposed) {
@@ -185,7 +209,7 @@ export function TerminalPane({
       term.dispose();
       termRef.current = null;
     };
-  }, [agent, resumeSessionId]);
+  }, [agent, runKey]);
 
   useEffect(() => {
     if (focused) {
@@ -193,5 +217,26 @@ export function TerminalPane({
     }
   }, [focused]);
 
-  return <div className="term-host" ref={hostRef} />;
+  return (
+    <div className="term-wrap">
+      {exited !== null && (
+        <div className={`term-exit${exited.failed ? " term-exit--failed" : ""}`} role="status">
+          <span className="term-exit-message">{exited.message}</span>
+          <button
+            type="button"
+            className="term-exit-action"
+            onClick={() => {
+              setExited(null);
+              // Bumping the key re-runs the effect, which builds a fresh terminal and a
+              // fresh pty. The previous output stays on screen until it does.
+              setRunKey((key) => key + 1);
+            }}
+          >
+            START AGAIN
+          </button>
+        </div>
+      )}
+      <div className="term-host" ref={hostRef} />
+    </div>
+  );
 }

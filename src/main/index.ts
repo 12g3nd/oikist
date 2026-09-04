@@ -181,7 +181,26 @@ function createWindow(stored?: WindowBounds): BrowserWindow {
     console.error(`[preload-error] ${preloadPath}: ${error.message}`);
   });
 
-  const manager = PtyManager.forWebContents(window.webContents);
+  // Wrapped rather than using forWebContents directly: an agent whose process ends is
+  // no longer running, and the rail must stop saying it is. A crashed agent never sends
+  // session-end, so the pty's own exit is the only reliable signal.
+  const manager = new PtyManager((channel, payload) => {
+    if (window.isDestroyed()) {
+      return;
+    }
+    window.webContents.send(channel, payload);
+    if (channel !== IPC.ptyExit) {
+      return;
+    }
+    const ptyId = (payload as { id: string }).id;
+    const sessionId = agentSessionForPty.get(ptyId);
+    if (sessionId !== undefined) {
+      agentSessionForPty.delete(ptyId);
+      if (launcher?.forget(sessionId) === true) {
+        publishAgents();
+      }
+    }
+  });
 
   // Read once, here, and never inside `closed`.
   //

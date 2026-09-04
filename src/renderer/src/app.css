@@ -316,6 +316,51 @@ body {
 
 .pane--focused { border-left-color: var(--accent); }
 
+.term-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Sits above the terminal rather than replacing it: the output underneath is usually
+   the actual explanation. */
+.term-exit {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex: none;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  border-left: 2px solid var(--fg-dim);
+  background: var(--surface);
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+
+.term-exit--failed {
+  border-left-color: var(--danger);
+  color: var(--danger);
+}
+
+.term-exit-message { min-width: 0; }
+
+.term-exit-action {
+  margin-left: auto;
+  flex: none;
+  border: 1px solid currentColor;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.term-exit-action:hover { background: #1a201e; }
+.term-exit-action:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+
 /* xterm measures itself against this box, so it must have real height before fit(). */
 .term-host {
   flex: 1;
