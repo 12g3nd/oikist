@@ -180,3 +180,19 @@ drops degrades quietly.
 Subagent tracking uses `SubagentStart`/`SubagentStop`, verified live: both fire, and the
 payload's `subagent_type` names the subagent. That label is the only payload field the
 relay forwards — everything else in a hook payload is prompt or tool text.
+
+## Comparing two measurements
+
+Numbers from two different harnesses are not a comparison. The M0 spike first reported
+that pty batching cost 45% throughput; it did not. Raw node-pty had been measured in a
+plain `.mjs` process and `PtyManager` under `tsx`, with different idle detection, so the
+harness difference was the entire result. Rerun as one process with one harness, varying
+only the consumer, batching turned out to be *faster*.
+
+When a benchmark runs variants in sequence, **run it in both orders**. The OS file cache
+warms across runs and produces a convincing monotonic trend that means nothing.
+`BENCH_REVERSE=1` does this for `tests/batching.bench.mts`.
+
+Counter-intuitive but measured: a pty consumer that does *more* work per read is faster,
+because node-pty and ConPTY coalesce into larger reads when the consumer is not draining
+instantly. At ~425,000 reads the per-read overhead dominates the bytes.

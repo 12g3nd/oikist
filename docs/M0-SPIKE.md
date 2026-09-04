@@ -23,20 +23,21 @@ through a pty by `type`.
 | Measurement | Result |
 |---|---|
 | Plain pipe, no pty (`spawn` + `type`) | **26.9 MB/s** |
-| Raw node-pty, no batching | **0.95 MB/s** — 421,713 reads, avg **74 bytes**, 13,168 reads/s |
-| oikist's `PtyManager` (8 ms coalescing) | **0.6 MB/s** — 5,605 IPC messages, avg 5.5 KB, 118 msg/s |
+| Raw node-pty, no batching | **0.54-0.95 MB/s** — ~425,000 reads, avg **74 bytes** (slower than batched; see the correction below) |
+| oikist's `PtyManager` (8 ms coalescing) | **0.6-0.8 MB/s** — ~5,400 IPC messages, avg 5.5 KB, ~120 msg/s |
 | Electron IPC bridge, main → renderer | **299 MB/s, 54,054 msg/s** (round trip, receipt confirmed) |
 | WebView2 via wry `evaluate_script` | host enqueue 58,800 msg/s; **delivery never drained** a 1,000-message queue |
 
 ## Why this decides it
 
 **ConPTY is the ceiling, and it sits upstream of both hosts.** The same file streams at
-26.9 MB/s through an ordinary pipe and at 0.95 MB/s through a pty — a 28× drop that
-neither Electron nor Tauri has any influence over. It is a Windows console limitation.
+26.9 MB/s through an ordinary pipe and at 0.5-0.95 MB/s through a pty — a 30-50× drop
+that neither Electron nor Tauri has any influence over. It is a Windows console
+limitation, and it is what every measurement below runs into.
 
 **Electron's bridge is idle at that rate.** It carries 299 MB/s and 54,054 msg/s;
-oikist's terminal asks it for 0.6 MB/s and 118 msg/s. The bridge runs at roughly **0.3%
-of capacity** — about 300× headroom on bytes and 450× on messages.
+oikist's terminal asks it for under 1 MB/s and ~120 msg/s. The bridge runs at roughly
+**0.3% of capacity** — some 300× headroom on bytes and 450× on messages.
 
 So the primary criterion cannot separate the two. For Tauri to be 25% better on
 sustained throughput it would have to beat a bottleneck neither host owns. The rule's
@@ -57,18 +58,43 @@ own instruction applies: **choose Electron and do not revisit.**
   ConPTY's ceiling and Electron's headroom are facts about the platform, not preferences
   about the code already written.
 
-## Open measurement, not diagnosed
+## A correction: batching is not slower, it is faster
 
-Batching costs throughput: 0.95 MB/s raw against 0.6 MB/s through `PtyManager`, roughly
-**45% slower**, reproduced across runs on an idle machine. In exchange it collapses
-421,713 pty reads into 5,605 IPC messages — a **78× reduction** in cross-process
-crossings, which is what the batching is for.
+This document first claimed batching cost ~45% throughput, comparing 0.95 MB/s raw
+against 0.6 MB/s through `PtyManager`. **That claim was wrong, and it was wrong for a
+reason worth recording: it was not a comparison.** Raw node-pty ran in a plain `.mjs`
+process; `PtyManager` ran under `tsx`; the two used different idle detection. Two
+numbers produced by two harnesses say nothing about the code between them.
 
-The cause has not been diagnosed and is deliberately not guessed at here. Practical
-impact is small: a real `npm run build` emits well under a megabyte, so the difference
-is roughly 1.0s versus 1.6s on a pathological 30 MB case and imperceptible on a normal
-one. Worth revisiting only if terminal responsiveness ever feels wrong in real use —
-and `npm run bench <fixture>` reproduces it.
+Rerun properly — four consumers, one process, one harness, one idle detector, varying
+only what the `onData` handler does — and run in both orders to rule out the OS file
+cache warming across variants:
+
+| Consumer | forward (A→D) | reversed (D→A) | emits |
+|---|---|---|---|
+| **A** raw, count only | 52.1s | 56.7s | ~425,000 |
+| **B** raw + string accumulation | 50.7s | 38.9s | ~75,000 |
+| **C** B + the 8 ms flush timer | 42.1s | 47.7s | ~5,800 |
+| **D** the real `PtyManager` | 39.7s | 48.2s | ~5,400 |
+
+**A is the slowest variant in both orders**, whether it runs first or last, so position
+and file caching do not explain it. On the mean of the two runs A is ~54s while B, C and
+D are all ~44s.
+
+**Why doing more work per read is faster.** The emit counts are stable across orders and
+tell the story: A receives ~425,000 pty reads, B ~75,000, C and D ~5,400. A consumer
+that returns instantly is handed many tiny reads; one that spends a moment lets
+node-pty and ConPTY coalesce. At 425,000 reads the per-read overhead dominates the
+actual byte handling, so fewer and larger reads win. Batching does not pay for its
+message reduction — it is the reason the reads get bigger.
+
+**Do not quote a precise percentage.** Run-to-run variance is large: B alone measured
+38.9s and 50.7s, a 30% spread. The direction is consistent across both orders; the
+magnitude is not. What is solid is the ordering (A slowest) and the emit reduction
+(~73× fewer cross-process messages, 425,000 to 5,400).
+
+`npm run bench` measures the pipeline; `node --import tsx tests/batching.bench.mts
+<fixture>` runs the four-way comparison, and `BENCH_REVERSE=1` flips the order.
 
 ## Reproducing
 
