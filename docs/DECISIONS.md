@@ -1,6 +1,7 @@
 # oikist — Design Decisions
 
-**Status:** M7 complete. Five of the six switch-bar items are met; subagents (M8) remain.
+**Status:** M0-M8 complete. All six switch-bar items are built. What remains is the
+other half of done: one full workday on oikist without opening Wave.
 **Recorded:** 2026-09-03
 
 This is the decision record for oikist, a Windows-only, agent-native development
@@ -260,7 +261,7 @@ project dies is building feature 12 of 40 forever and never switching off Wave.
 | **M5** | ~~Restore~~ **done 2026-09-03** | Agent panes restore dormant; explicit resume, never automatic |
 | **M6** | ~~Read-only file viewer~~ **done 2026-09-03** | Bounded reads, binaries refused, no write channel exists |
 | **M7** | ~~Routing + handoff~~ **done 2026-09-03** | Codex limits exact; Claude publishes none; handoff to clipboard |
-| **M8** | Subagent indicator | |
+| **M8** | ~~Subagent indicator~~ **done 2026-09-03** | Start/stop hooks fire and name the subagent |
 
 Routing/handoff sits at M7 because it needs panes and a rail to live in — but the
 **cheap half ships in M1**: a command that dumps prompt + branch + files touched +

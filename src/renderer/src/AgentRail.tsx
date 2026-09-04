@@ -101,6 +101,17 @@ export function AgentRail(): React.JSX.Element {
             <div className="agent-title" title={agent.cwd ?? agent.title}>
               {agent.title}
             </div>
+            {agent.subagents !== undefined && agent.subagents.active > 0 && (
+              <div className="agent-subagents" title={agent.subagents.labels.join(", ")}>
+                <span className="agent-branch" aria-hidden="true">
+                  ⌥
+                </span>
+                {agent.subagents.active} subagent{agent.subagents.active === 1 ? "" : "s"}
+                {agent.subagents.labels.length > 0 && (
+                  <span className="agent-subagent-names">{agent.subagents.labels.join(" · ")}</span>
+                )}
+              </div>
+            )}
             <div className="agent-meta">
               <span className="agent-state">{ACTIVITY_LABEL[agent.activity]}</span>
               {/*

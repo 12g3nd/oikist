@@ -157,6 +157,27 @@ body {
 
 .agent-origin--launched { color: var(--accent); }
 
+/* A row that is busy with three things reads differently from one that is stuck. */
+.agent-subagents {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+
+.agent-branch { opacity: 0.8; }
+
+.agent-subagent-names {
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 /* Attention states carry the only strong colour in the rail. */
 .agent[data-activity="needsPermission"] { border-left-color: var(--danger); }
 .agent[data-activity="needsPermission"] .agent-glyph,

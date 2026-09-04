@@ -86,3 +86,17 @@ test("a body with unknown fields, a bad id, or a bad kind is refused", () => {
     assert.equal(parseHookEvent(body), null, JSON.stringify(body));
   }
 });
+
+test("subagent events are registered, so a pane can report what it is busy with", () => {
+  // Both names were confirmed valid by `claude doctor`, which prints its full event
+  // list when it meets an unknown one, and confirmed live: a real session fired
+  // subagent-start and subagent-stop with label "Explore".
+  assert.ok(SETTINGS.hooks.SubagentStart, "SubagentStart must be registered");
+  assert.ok(SETTINGS.hooks.SubagentStop, "SubagentStop must be registered");
+
+  const kinds = Object.values(SETTINGS.hooks)
+    .flatMap((groups) => groups.flatMap((group) => group.hooks))
+    .map((handler) => handler.args[handler.args.indexOf("--kind") + 1]);
+  assert.ok(kinds.includes("subagent-start"));
+  assert.ok(kinds.includes("subagent-stop"));
+});

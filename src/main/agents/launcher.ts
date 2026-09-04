@@ -7,7 +7,14 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { activityForKind, buildHookSettings, isSessionEnd, type HookEvent } from "../../shared/hooks.js";
+import {
+  activityForKind,
+  buildHookSettings,
+  isSessionEnd,
+  isSubagentStart,
+  isSubagentStop,
+  type HookEvent
+} from "../../shared/hooks.js";
 import { projectFromCwd, type LaunchedAgent } from "../../shared/agents.js";
 
 const run = promisify(execFile);
@@ -126,6 +133,37 @@ export class AgentLauncher {
     return { sessionId, file, args, hooked };
   }
 
+  /**
+   * Tracks running subagents by counting starts against stops.
+   *
+   * The count is floored at zero rather than allowed to go negative: a stop whose start
+   * was missed — the app opened mid-turn, or a hook was dropped — must not leave the
+   * rail claiming minus one subagent forever.
+   */
+  #applySubagent(existing: LaunchedAgent, event: HookEvent): LaunchedAgent {
+    const current = existing.subagents ?? { active: 0, labels: [] };
+    if (isSubagentStart(event.kind)) {
+      return {
+        ...existing,
+        subagents: {
+          active: current.active + 1,
+          labels: event.label === undefined ? [...current.labels] : [...current.labels, event.label]
+        }
+      };
+    }
+
+    const labels = [...current.labels];
+    if (event.label !== undefined) {
+      const at = labels.indexOf(event.label);
+      if (at !== -1) {
+        labels.splice(at, 1);
+      }
+    } else {
+      labels.pop();
+    }
+    return { ...existing, subagents: { active: Math.max(0, current.active - 1), labels } };
+  }
+
   /** Applies one hook event. Returns true when the rail should be republished. */
   applyHookEvent(event: HookEvent): boolean {
     const existing = this.#launched.get(event.sessionId);
@@ -137,6 +175,10 @@ export class AgentLauncher {
     }
     if (isSessionEnd(event.kind)) {
       this.#launched.delete(event.sessionId);
+      return true;
+    }
+    if (isSubagentStart(event.kind) || isSubagentStop(event.kind)) {
+      this.#launched.set(event.sessionId, this.#applySubagent(existing, event));
       return true;
     }
     const activity = activityForKind(event.kind);

@@ -92,3 +92,45 @@ have started saying "idle" about everything.
 machine. It cannot poll at terminal speed, so discovery runs every 5s with single-flight
 and exists only to notice sessions started outside oikist. Agents oikist launches will
 report their own state through hooks, immediately, and that is the path that matters.
+
+### Claude's full hook event list, and how to get it for free
+
+**Found at M8, 2026-09-03.**
+
+`claude doctor` reads settings from the current directory without a trust prompt, and
+when it meets an unknown hook event it prints **every valid one**:
+
+```
+PreToolUse, PostToolUse, PostToolUseFailure, PostToolBatch, Notification,
+UserPromptSubmit, UserPromptExpansion, SessionStart, SessionEnd, Stop, StopFailure,
+SubagentStart, SubagentStop, PreCompact, PostCompact, PreModelSwitch, PostModelSwitch,
+PermissionRequest, PermissionDenied, Setup, TeammateIdle, TaskCreated, TaskCompleted,
+Elicitation, ElicitationResult, ConfigChange, WorktreeCreate, WorktreeRemove,
+InstructionsLoaded, CwdChanged, FileChanged, DirectoryAdded, MessageDisplay
+```
+
+So the hook surface can be enumerated with zero tokens: drop a settings file containing
+a deliberately bogus event into a scratch directory and run `claude doctor` there. An
+unknown event is **ignored, not fatal**, so registering one that a future version drops
+degrades quietly rather than breaking the launch.
+
+Worth revisiting from that list: **`PermissionRequest`** is a dedicated event, which is
+more direct than the `Notification` matchers currently used for permission prompts.
+`FileChanged`, `CwdChanged` and `TaskCreated`/`TaskCompleted` are also unexploited.
+
+### Subagent hooks fire, and name the subagent
+
+Verified live rather than assumed. One print-mode session pointed at a throwaway
+listener produced, in order:
+
+```
+session-start
+subagent-start   label "Explore"
+subagent-stop    label "Explore"
+turn-end
+session-end
+```
+
+So a pane can report *what* it is busy with, not merely that it is busy. The label comes
+from `subagent_type` in the hook payload; it is the only payload field the relay
+forwards, because everything else there is prompt or tool text.

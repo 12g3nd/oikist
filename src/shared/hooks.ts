@@ -14,7 +14,12 @@ export const HOOK_KINDS = Object.freeze({
   UserPromptSubmit: "turn-start",
   PostToolUse: "tool-end",
   Stop: "turn-end",
-  SessionEnd: "session-end"
+  SessionEnd: "session-end",
+  // Claude's own valid-event list (printed by `claude doctor` for an unknown event)
+  // includes both of these, so a subagent's lifetime is observable directly rather
+  // than inferred from a Task tool call.
+  SubagentStart: "subagent-start",
+  SubagentStop: "subagent-stop"
 } as const);
 
 export type HookKind = (typeof HOOK_KINDS)[keyof typeof HOOK_KINDS] | "needs-permission";
@@ -107,6 +112,19 @@ export function isSessionEnd(kind: unknown): boolean {
 export interface HookEvent {
   readonly sessionId: string;
   readonly kind: string;
+  /** For a subagent event: which kind of subagent, when the payload names one. */
+  readonly label?: string;
+}
+
+/** A label is a display string, so it is length-capped and stripped of control bytes. */
+export const MAX_LABEL_LENGTH = 40;
+
+export function isSubagentStart(kind: unknown): boolean {
+  return kind === "subagent-start";
+}
+
+export function isSubagentStop(kind: unknown): boolean {
+  return kind === "subagent-stop";
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -126,15 +144,28 @@ export function parseHookEvent(body: unknown): HookEvent | null {
     return null;
   }
   const keys = Object.keys(body);
-  if (keys.length !== 2 || !keys.includes("sessionId") || !keys.includes("kind")) {
+  if (!keys.includes("sessionId") || !keys.includes("kind")) {
     return null;
   }
-  const { sessionId, kind } = body as Record<string, unknown>;
+  // Unknown fields are refused outright rather than ignored, so a payload shape change
+  // is loud instead of silently carrying something unvalidated into the UI.
+  if (keys.some((key) => key !== "sessionId" && key !== "kind" && key !== "label")) {
+    return null;
+  }
+  const { sessionId, kind, label } = body as Record<string, unknown>;
   if (typeof sessionId !== "string" || !UUID.test(sessionId)) {
     return null;
   }
   if (typeof kind !== "string" || !ALLOWED_KINDS.includes(kind)) {
     return null;
   }
-  return { sessionId, kind };
+  if (label !== undefined && typeof label !== "string") {
+    return null;
+  }
+  // Control characters would corrupt a terminal or the rail if ever echoed.
+  const cleanLabel =
+    typeof label === "string"
+      ? label.replace(new RegExp("[\\u0000-\\u001f\\u007f]", "g"), "").trim().slice(0, MAX_LABEL_LENGTH)
+      : "";
+  return cleanLabel === "" ? { sessionId, kind } : { sessionId, kind, label: cleanLabel };
 }

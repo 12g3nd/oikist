@@ -49,11 +49,21 @@ async function main() {
   }
 
   let sessionId = null;
+  let label = null;
   try {
     const payload = JSON.parse(await readStdin());
     // Claude sends snake_case on the hook payload.
     if (payload !== null && typeof payload === "object" && typeof payload.session_id === "string") {
       sessionId = payload.session_id;
+      // Present on subagent events. Which kind of subagent is far more useful than a
+      // bare count, and it is the only payload field forwarded: everything else in a
+      // hook payload is prompt or tool text.
+      for (const field of ["subagent_type", "agent_type", "subagent_name"]) {
+        if (typeof payload[field] === "string" && payload[field] !== "") {
+          label = payload[field];
+          break;
+        }
+      }
     }
   } catch {
     return;
@@ -71,7 +81,7 @@ async function main() {
       // Only the session and the kind. The hook payload itself is never forwarded: it
       // can contain prompt text and tool output, and none of that belongs in a status
       // panel or in oikist's memory.
-      body: JSON.stringify({ sessionId, kind }),
+      body: JSON.stringify(label === null ? { sessionId, kind } : { sessionId, kind, label }),
       signal: controller.signal
     });
   } catch {

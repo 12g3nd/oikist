@@ -168,3 +168,15 @@ Verified by measurement rather than by reading: restoring an agent pane leaves t
 `claude` process count unchanged.
 
 A shell pane is never dormant — a shell costs nothing to start.
+
+## Enumerating Claude's hook surface for free
+
+`claude doctor` reads settings from the current directory without a trust prompt, and
+prints the complete list of valid hook events when it meets an unknown one. Drop a
+settings file with a bogus event into a scratch directory and run it there — no tokens
+spent. Unknown events are ignored rather than fatal, so registering one a future version
+drops degrades quietly.
+
+Subagent tracking uses `SubagentStart`/`SubagentStop`, verified live: both fire, and the
+payload's `subagent_type` names the subagent. That label is the only payload field the
+relay forwards — everything else in a hook payload is prompt or tool text.

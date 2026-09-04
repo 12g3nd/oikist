@@ -34,6 +34,14 @@ export interface AgentSummary {
   readonly pid?: number;
   readonly cwd?: string;
   readonly project?: string;
+  /** Subagents this agent is running right now, when it reports them. */
+  readonly subagents?: SubagentView;
+}
+
+export interface SubagentView {
+  readonly active: number;
+  /** Types of the running subagents, when the payload named them. */
+  readonly labels: readonly string[];
 }
 
 /** Attention first. The rail's whole purpose is that the top row is the one that needs you. */
@@ -127,6 +135,7 @@ export interface LaunchedAgent {
   readonly startedAt: number;
   readonly cwd?: string;
   readonly title?: string;
+  readonly subagents?: SubagentView;
 }
 
 /**
@@ -158,7 +167,8 @@ export function mergeAgents(
       startedAt: own.startedAt || (discovered?.startedAt ?? 0),
       ...(discovered?.pid === undefined ? {} : { pid: discovered.pid }),
       ...(cwd === undefined ? {} : { cwd }),
-      ...(project === undefined || project === "" ? {} : { project })
+      ...(project === undefined || project === "" ? {} : { project }),
+      ...(own.subagents === undefined || own.subagents.active === 0 ? {} : { subagents: own.subagents })
     });
   }
   return [...byId.values()].sort(compareAgents);
