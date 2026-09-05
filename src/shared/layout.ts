@@ -23,7 +23,7 @@ export interface PaneState {
   readonly id: string;
   readonly title: string;
   /** Absent for a plain shell. Set when this pane runs a coding agent. */
-  readonly agent?: "claude";
+  readonly agent?: "claude" | "codex";
   /** Absent for a terminal. Set when this pane shows something else. */
   readonly view?: "files" | "handoff";
   /** The directory a file pane is browsing, so it reopens where it was. */
@@ -61,13 +61,13 @@ export interface LayoutState {
   readonly activeTabId: string | null;
 }
 
-export type PaneKind = "shell" | "claude" | "files" | "handoff";
+export type PaneKind = "shell" | "claude" | "codex" | "files" | "handoff";
 
 function newPane(nextId: IdFactory, kind: PaneKind, cwd?: string): PaneState {
   const id = nextId();
   const where = cwd === undefined || cwd === "" ? {} : { cwd };
-  if (kind === "claude") {
-    return { id, title: "", agent: "claude", ...where };
+  if (kind === "claude" || kind === "codex") {
+    return { id, title: "", agent: kind, ...where };
   }
   // A file pane's directory is the one it browses, which is the same directory a
   // terminal beside it would start in.
@@ -297,7 +297,7 @@ function readPane(value: unknown): PaneState | null {
   }
   const cwd = typeof value.cwd === "string" && value.cwd !== "" ? { cwd: value.cwd } : {};
   // Only a known provider survives the read; anything else becomes a plain shell.
-  if (value.agent !== "claude") {
+  if (value.agent !== "claude" && value.agent !== "codex") {
     return { id: value.id, title: readString(value.title, ""), ...cwd };
   }
   // Every restored agent pane is dormant, without exception. This is the single point
@@ -305,7 +305,7 @@ function readPane(value: unknown): PaneState | null {
   return {
     id: value.id,
     title: readString(value.title, ""),
-    agent: "claude",
+    agent: value.agent,
     dormant: true,
     ...cwd,
     ...(typeof value.sessionId === "string" && UUID.test(value.sessionId)
@@ -343,7 +343,13 @@ function readTab(value: unknown): TabState | null {
 }
 
 function isBareKind(title: string): title is PaneKind {
-  return title === "shell" || title === "claude" || title === "files" || title === "handoff";
+  return (
+    title === "shell" ||
+    title === "claude" ||
+    title === "codex" ||
+    title === "files" ||
+    title === "handoff"
+  );
 }
 
 /**

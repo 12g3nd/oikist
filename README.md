@@ -49,6 +49,13 @@ hooks, and name the subagents they spawn. Nothing is ever written to your global
 `~/.claude/settings.json` — hooks go in a per-launch `--settings` file, so an agent you
 start by hand behaves exactly as it did before oikist existed.
 
+**Codex runs in a pane too, and says less about itself.** `codex app-server daemon` is
+Unix-only, so an app-server instance sees only the threads it loaded — a Codex session
+running in front of you is unreachable by one. A Codex row is `launched` and
+`STATE UNKNOWN`, permanently, rather than a guess dressed as a reading. The limitation
+is written down in [`docs/KNOWN-ISSUES.md`](docs/KNOWN-ISSUES.md) instead of being
+quietly absent.
+
 ### A terminal that is actually a terminal
 
 ![Tabs and a 2-up split, with layout restored from disk](docs/screenshots/terminal.png)

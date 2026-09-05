@@ -220,6 +220,14 @@ export function App(): React.JSX.Element {
             + CLAUDE
           </button>
           <button
+            className="tabbar-action tabbar-action--agent"
+            type="button"
+            onClick={() => apply((current) => createTab(current, newId, "codex"))}
+            title="New Codex session — oikist starts it, but Codex publishes no live state for it on Windows"
+          >
+            + CODEX
+          </button>
+          <button
             className="tabbar-action tabbar-action--files"
             type="button"
             onClick={() => apply((current) => createTab(current, newId, "files"))}
@@ -298,14 +306,18 @@ export function App(): React.JSX.Element {
  * what it was and what clicking will do, so nothing happens by surprise.
  */
 function DormantAgent({ pane, onResume }: { pane: PaneState; onResume: () => void }): React.JSX.Element {
-  const resumable = pane.sessionId !== undefined;
+  // Codex is never resumable here: oikist cannot assign or recover a Codex thread id on
+  // Windows, so the only honest offer is a new session.
+  const resumable = pane.sessionId !== undefined && pane.agent !== "codex";
   return (
     <div className="dormant">
       <span className="dormant-provider">{(pane.agent ?? "agent").toUpperCase()}</span>
       <p className="dormant-note">
         {resumable
           ? "Not running. Its conversation is on disk and can be picked up where it stopped."
-          : "Not running. No previous session was recorded, so this starts a new one."}
+          : pane.agent === "codex"
+            ? "Not running. Codex sessions cannot be resumed from here, so this starts a new one."
+            : "Not running. No previous session was recorded, so this starts a new one."}
       </p>
       {pane.cwd !== undefined && (
         <p className="dormant-where" title={pane.cwd}>

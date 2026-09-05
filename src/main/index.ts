@@ -243,17 +243,23 @@ ipcMain.handle(IPC.ptyCreate, async (event, options: PtyCreateOptions): Promise<
   if (manager === undefined) {
     throw new Error("No terminal host for this window.");
   }
-  if (options.agent !== "claude" || launcher === null) {
+  if (options.agent === undefined || launcher === null) {
     return { id: await manager.create(options) };
   }
 
-  const launch = await launcher.prepare(options.cwd, options.resumeSessionId);
+  const launch =
+    options.agent === "codex"
+      ? await launcher.prepareCodex(options.cwd)
+      : await launcher.prepare(options.cwd, options.resumeSessionId);
   const id = await manager.create(options, { file: launch.file, args: launch.args });
   agentSessionForPty.set(id, launch.sessionId);
   // The pane appears in the rail immediately, before its first hook, so launching an
   // agent has visible effect rather than a second of nothing.
   publishAgents();
-  return { id, agentSessionId: launch.sessionId };
+  // The id goes back to the pane only when it can actually be resumed with it. For Codex
+  // it is oikist's own handle for a rail row, not a Codex thread id — storing it in the
+  // layout would make a restored pane offer to resume a session that does not exist.
+  return options.agent === "codex" ? { id } : { id, agentSessionId: launch.sessionId };
 });
 
 ipcMain.on(IPC.ptyWrite, (event, { id, data }: { id: string; data: string }) => {

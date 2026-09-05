@@ -165,3 +165,41 @@ it in a ref and keep it out of the deps.
 **Also corrected:** the first diagnosis of the vanishing tab was "Claude is out of
 quota". It was not. The exit message deliberately no longer names a cause — it points at
 the pane's own output, which is where the real one was all along.
+
+### Codex is a pane and a rate-limit reading, not the full app-server integration
+
+`SPIKE-codex-app-server.md` mapped a large surface — `thread/status/changed`,
+`thread/list`, `turn/diff/updated`, `codex queue` — and `DECISIONS.md` section 6 was
+written as though all of it would be used. **What ships is narrower**, and the gap was
+found by noticing there was a `+ CLAUDE` button and no `+ CODEX` one.
+
+Shipped:
+
+- `+ CODEX` launches a real Codex session in a pane, in the tab's working directory.
+- The rail carries a `CODEX` row: `launched`, and `STATE UNKNOWN` permanently.
+- `account/rateLimits/read` answers exactly, for the handoff view.
+
+Not shipped, and not currently planned for v1:
+
+- Live per-thread state. **This one is the platform's, not a shortcut.**
+  `codex app-server daemon` is Unix-only, so an app-server instance sees only the
+  threads it loaded itself. A TUI running in a pane is invisible to one, so the typed
+  `ThreadActiveFlag` enum the spike found cannot be read for the session you are
+  actually looking at. A Codex row is therefore honest only as `STATE UNKNOWN`.
+- `thread/list` history, `turn/diff/updated`, `thread/queue/changed`, and the checked-in
+  generated bindings that `DECISIONS.md` section 6 calls for.
+
+The consequence worth stating plainly: **for Codex, oikist is a good place to run a
+session and a poor place to watch one.** Claude panes report their own state through
+hooks; Codex panes cannot. Revisit if the daemon becomes cross-platform.
+
+### The Codex weekly window was exhausted while this was built
+
+On 2026-09-03 the spike recorded the 7-day window at **100% used**, and Codex work that
+day stopped at what could be read without spending a turn — which is part of why the
+integration is the narrow one above. On 2026-09-04 the same call returned plan `plus`,
+10% of the 5-hour window and 24% of the weekly, and the pane launch was verified live.
+
+Worth remembering as a research hazard rather than a defect: a provider being out of
+quota silently shapes what gets built against it, and the reason does not show up
+anywhere in the code.

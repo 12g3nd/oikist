@@ -31,7 +31,7 @@ interface TerminalPaneProps {
   /** Where the shell or agent starts. Absent means the home directory. */
   readonly cwd?: string;
   /** Absent for a plain shell; set to run a coding agent in this pane. */
-  readonly agent?: "claude";
+  readonly agent?: "claude" | "codex";
   /** Resume this agent session rather than starting a new one. */
   readonly resumeSessionId?: string;
   /** Reports the agent session this pane ended up running, so it can be resumed later. */

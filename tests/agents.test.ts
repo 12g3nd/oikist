@@ -194,3 +194,50 @@ test("a missing exit code never renders as the word undefined", () => {
   }
   assert.equal(describeAgentExit(undefined, 300).failed, true, "an immediate exit is still a failure");
 });
+
+// --- Codex ---
+//
+// Codex is launched, never attached: `codex app-server daemon` is Unix-only, so an
+// app-server instance sees only the threads it loaded and a TUI session started
+// elsewhere is unreachable on Windows. A launched Codex row therefore has certain
+// identity and no live state, which is a combination the model already allows.
+
+test("a launched codex keeps its provider through the merge", () => {
+  const merged = mergeAgents(
+    [
+      {
+        provider: "codex",
+        sessionId: "codex-1",
+        activity: "unknown",
+        startedAt: 10,
+        cwd: "C:/Users/SJ/oikist"
+      }
+    ],
+    []
+  );
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0]!.provider, "codex", "a codex row must not be relabelled claude");
+  assert.equal(merged[0]!.origin, "launched");
+  assert.equal(merged[0]!.activity, "unknown", "Codex publishes no live state for a TUI on Windows");
+  assert.equal(merged[0]!.project, "oikist");
+});
+
+test("claude and codex rows coexist without either overwriting the other", () => {
+  const merged = mergeAgents(
+    [
+      { provider: "claude", sessionId: "a", activity: "working", startedAt: 1 },
+      { provider: "codex", sessionId: "b", activity: "unknown", startedAt: 2 }
+    ],
+    []
+  );
+  assert.deepEqual(
+    merged.map((agent) => [agent.provider, agent.sessionId]),
+    [["claude", "a"], ["codex", "b"]],
+    "working sorts above unknown, and both survive"
+  );
+});
+
+test("an omitted provider still means claude, so existing launches are unaffected", () => {
+  const merged = mergeAgents([{ sessionId: "a", activity: "idle", startedAt: 1 }], []);
+  assert.equal(merged[0]!.provider, "claude");
+});

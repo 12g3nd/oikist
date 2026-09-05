@@ -14,11 +14,16 @@ export type AgentActivity = "needsPermission" | "waitingForInput" | "working" | 
 /**
  * How an agent came to be known, and therefore how much its state can be trusted.
  *
- * `launched` means oikist started it, assigned its session id, and installed hooks for
- * it — its state is reported, not inferred. `attached` means it was found running: its
- * identity is real, but nothing has told us what it is doing. The UI shows the
- * difference rather than flattening it, because a confident guess presented as fact is
- * how a status panel stops being believed.
+ * `launched` means oikist started it, so its identity is certain. `attached` means it
+ * was found running: its identity is real, but nothing has told us what it is doing.
+ * The UI shows the difference rather than flattening it, because a confident guess
+ * presented as fact is how a status panel stops being believed.
+ *
+ * Origin is about identity, never about activity. A launched Claude usually also
+ * reports its state through hooks, but a launched Codex never does — Codex publishes no
+ * live state for a TUI session on Windows — and an unhooked Claude launch does not
+ * either. Those rows are `launched` and `unknown` at the same time, which is the honest
+ * pair rather than a contradiction.
  */
 export type AgentOrigin = "launched" | "attached";
 export type AgentConfidence = "certain" | "confident";
@@ -130,6 +135,11 @@ export function parseClaudeAgents(value: unknown): AgentSummary[] {
  * `certain` while discovered ones are only `confident`.
  */
 export interface LaunchedAgent {
+  /**
+   * Absent means Claude, so every launch that predates a second provider still reads
+   * correctly. Codex rows set it explicitly.
+   */
+  readonly provider?: AgentProvider;
   readonly sessionId: string;
   readonly activity: AgentActivity;
   readonly startedAt: number;
@@ -158,7 +168,7 @@ export function mergeAgents(
     const cwd = own.cwd ?? discovered?.cwd;
     const project = cwd === undefined ? discovered?.project : projectFromCwd(cwd);
     byId.set(own.sessionId, {
-      provider: "claude",
+      provider: own.provider ?? "claude",
       sessionId: own.sessionId,
       activity: own.activity,
       origin: "launched",

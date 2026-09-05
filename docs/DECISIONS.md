@@ -209,6 +209,13 @@ Revisit if the daemon becomes cross-platform.
 pinned to a Codex version. The whole surface is marked experimental; a diff on the
 generated directory after an upgrade is the breaking-change alarm.
 
+**What actually shipped for Codex is narrower than this section describes**, and the
+difference is recorded in [`KNOWN-ISSUES.md`](KNOWN-ISSUES.md): a `+ CODEX` pane, a rail
+row that is `launched` and permanently `STATE UNKNOWN`, and the rate-limit read. The
+live-state half is blocked by the Unix-only daemon, not deferred by choice; the bindings
+are simply not checked in yet. This paragraph stays as written because it is what was
+decided — the gap belongs in the issues file, not hidden by editing the decision.
+
 **Rate-limit awareness:** for **Codex**, read it exactly —
 `account/rateLimits/read` and the `account/rateLimits/updated` push carry
 `usedPercent`, `windowDurationMins` and `resetsAt` for both the 5-hour and 7-day

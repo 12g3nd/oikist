@@ -47,7 +47,7 @@ export interface PtyCreateOptions {
   readonly cols: number;
   readonly rows: number;
   /** Absent for a plain shell; set to run a coding agent in this pane instead. */
-  readonly agent?: "claude";
+  readonly agent?: "claude" | "codex";
   /** Resume this agent session instead of starting a new one. */
   readonly resumeSessionId?: string;
 }

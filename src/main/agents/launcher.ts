@@ -134,6 +134,42 @@ export class AgentLauncher {
   }
 
   /**
+   * Starts a Codex session that oikist owns.
+   *
+   * Far less is possible here than for Claude, and the difference is the platform's, not
+   * a shortcut. Codex has no `--session-id` to assign and no hook surface to install, and
+   * `codex app-server daemon` is Unix-only — so an app-server instance sees only threads
+   * it loaded itself, and a TUI running in a pane is invisible to one. oikist therefore
+   * knows it started this agent and nothing about what it is doing.
+   *
+   * The id below is oikist's own handle for the row, not a Codex thread id. It is never
+   * shown as one and never used to resume: a dormant Codex pane starts a new session,
+   * which is why `prepareCodex` takes no resume argument.
+   */
+  async prepareCodex(cwd?: string): Promise<{ sessionId: string; file: string; args: string[] }> {
+    const file = await this.#resolveExecutable("codex");
+    if (file === null) {
+      throw new Error("Codex was not found on PATH. Install the Codex CLI, or open a shell pane instead.");
+    }
+
+    const sessionId = randomUUID();
+    this.#launched.set(sessionId, {
+      provider: "codex",
+      sessionId,
+      // Permanently unknown, not "not yet known". Nothing will ever arrive to change it.
+      activity: "unknown",
+      startedAt: Date.now(),
+      // Always titled, so the row never falls back to showing this id. It is oikist's
+      // own handle, and a hex string in the rail reads like a Codex thread id that
+      // could be looked up — which it is not.
+      title: cwd === undefined ? "codex" : projectFromCwd(cwd),
+      ...(cwd === undefined ? {} : { cwd })
+    });
+
+    return { sessionId, file, args: [] };
+  }
+
+  /**
    * Tracks running subagents by counting starts against stops.
    *
    * The count is floored at zero rather than allowed to go negative: a stop whose start
