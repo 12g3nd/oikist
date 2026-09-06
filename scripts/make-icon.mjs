@@ -34,6 +34,21 @@ const OUTLINE = [229, 52, 44];
 const OFFSET = 0.035;
 
 /**
+ * The offset never falls below this many device pixels.
+ *
+ * A proportional offset looks right at 256 and vanishes at 32, where 0.035 is a single
+ * pixel of red that reads as an anti-aliasing artefact rather than a decision — the icon
+ * looks unchanged at exactly the size it is most often seen. Small faces therefore get a
+ * proportionally larger offset, which is the same reasoning that has them drawn rather
+ * than downscaled.
+ */
+const MIN_OFFSET_PX = 1.6;
+
+function offsetFor(size) {
+  return Math.max(OFFSET, MIN_OFFSET_PX / size);
+}
+
+/**
  * Below this, the mark stays one colour.
  *
  * At 24px the offset is half a pixel and at 16px it is a quarter, so the red stops being
@@ -98,6 +113,7 @@ function inRune(x, y) {
 function render(size) {
   const pixels = Buffer.alloc(size * size * 4);
   const outlined = size >= OUTLINE_MIN_SIZE;
+  const shift = offsetFor(size);
   const total = SAMPLES * SAMPLES;
 
   for (let py = 0; py < size; py += 1) {
@@ -113,7 +129,7 @@ function render(size) {
           }
           // Sampling the rune *down and right* of here paints it up and left of where
           // it would otherwise sit.
-          if (outlined && inRune(x + OFFSET, y + OFFSET)) {
+          if (outlined && inRune(x + shift, y + shift)) {
             redHits += 1;
           }
         }
