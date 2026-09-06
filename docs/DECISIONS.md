@@ -1,8 +1,10 @@
 # oikist — Design Decisions
 
-**Status:** M0-M8 complete, spike included. All six switch-bar items are built. What
-remains is the other half of done: one full workday on oikist without opening Wave.
-**Recorded:** 2026-09-03
+**Status:** M0-M8 complete, spike included. All six switch-bar items are built. The day 1
+workday test ran on 2026-09-04: Wave was never opened, and VS Code's agent extensions won
+the work instead. That result reversed two decisions and moved the fence — see sections
+2, 3, 4 and 10. Current work is the section 10 roadmap, step 1.
+**Recorded:** 2026-09-03 · **Amended:** 2026-09-05
 
 This is the decision record for oikist, a Windows-only, agent-native development
 environment. It exists so that neither future-me nor any agent working in this repo
@@ -51,7 +53,60 @@ Wave install, and the Go + Task + Zig toolchain (none of which were installed).
 best available documentation on ConPTY handling on Windows, tiling layout
 (~4,100 LOC), and block state modeling. Read it; do not build on it.
 
-## 2. TypeScript, not Rust
+## 2. TypeScript, then a Rust host
+
+**Superseded 2026-09-05.** The original decision — TypeScript throughout — stood on an
+estimate that was checked and found wrong. See *The measurement that reopened this* at
+the end of this section. The host process moves to Rust under Tauri; the renderer and
+the pure domain layer stay TypeScript. **The order matters and is not negotiable: the
+migration is the last step of the current roadmap, not the first.** Product work in
+section 10 lands first, on the codebase that exists.
+
+**What survives unchanged from the original reasoning**, and is the reason the renderer
+is not part of this: the terminal is xterm.js in a browser engine, Tauri on Windows
+renders in WebView2 which is Chromium, and so **the frontend is TypeScript regardless**.
+Nothing about the language choice touches how the app looks or how fast it draws.
+
+**What the port covers:** `pty`, `layout-store`, `launcher`, `discovery`, and file I/O.
+**What it does not:** `layout.ts`, `agents.ts`, `handoff.ts`, `hooks.ts` and `files.ts`
+are pure logic with no I/O. They stay TypeScript in the renderer, so the 442-line layout
+suite and its siblings are never rewritten. `hook-server.ts` is deleted rather than
+ported — see section 10.
+
+**Cost accepted:** `node-pty` is replaced by a Rust ConPTY crate (`portable-pty`),
+which retires hard rule 3 in `CLAUDE.md` as written. Agent development is slower in
+async Rust than in TypeScript, and that was a real argument in the original decision;
+it is accepted rather than refuted.
+
+### The measurement that reopened this
+
+Section 3 priced the entire Tauri saving at *"~140MB disk, ~200MB baseline RAM"* and
+called it meaningless. That number was an estimate and was never checked. Measured on
+2026-09-05:
+
+```
+dist/win-unpacked          371M
+  └ electron runtime       345M
+your application code      1.2M
+```
+
+The real disk figure is **~345MB — 2.5x the recorded estimate** — and the application
+is **0.3% of what ships**. A Tauri build is roughly 10-20MB, WebView2 already being
+present on Windows 11: a ~96% cut. That is not the difference the record argued against.
+
+This is the escape hatch below working as designed. It asked for a measurement rather
+than an opinion, and a measurement is what moved it. It is worth being precise about
+what the measurement does and does not prove: it establishes the saving is far larger
+than recorded, **not** that 371MB was costing anything. Nothing in the workday log
+complained of size. This is a want, honestly arrived at, not a need.
+
+**Escape hatch (unchanged, and still the standard for reversing this):** if measurement
+ever shows a hot path — pty streaming, project indexing, NPU inference — write *that
+piece* natively. Surgically, after measuring. Not on a hunch.
+
+---
+
+**The original decision, retained for the record:**
 
 **Decided:** TypeScript throughout.
 
@@ -71,7 +126,30 @@ the language choice only ever governs the host process. Against that:
 indexing, NPU inference — write *that piece* as a Rust sidecar or native module.
 Surgically, after measuring. Not as a foundation.
 
-## 3. Electron — spike run, decision settled
+## 3. Electron — spike run, then reversed on footprint
+
+**Amended 2026-09-05.** Electron is replaced by Tauri as the last step of the section 10
+roadmap. **The performance half of this section was not overturned and still stands** —
+it was right, and it is still the reason no one should expect the migration to make
+anything faster.
+
+**What stands.** ConPTY caps a pty at ~0.95 MB/s while Electron's IPC bridge carries
+299 MB/s, so the bridge runs at ~0.3% of capacity and the bottleneck sits upstream of
+both hosts. Tauri cannot be 25% better on a ceiling neither host owns, and the M0
+decision rule below was met honestly. **The migration is expected to change throughput,
+latency and appearance by nothing at all.** Anyone reading this later and hoping Rust
+made the terminal faster: it did not, and it was never going to.
+
+**What was overturned.** The sentence *"What Tauri saves (~140MB disk, ~200MB baseline
+RAM) is meaningless on a 32GB machine"* rested on an unchecked estimate. Measured, the
+disk saving is ~345MB of a 371MB install carrying 1.2MB of application code. Section 2
+holds the numbers and the reasoning. **"Not to be revisited" was too strong a phrase for
+a decision resting on a figure nobody had measured** — that is the lesson worth keeping
+from this reversal, more than the outcome.
+
+---
+
+**The original decision, retained for the record:**
 
 **Decided:** Electron. The M0 spike ran on 2026-09-03 and is recorded in
 [`M0-SPIKE.md`](M0-SPIKE.md). ConPTY caps a pty at ~0.95 MB/s while Electron's IPC
@@ -103,11 +181,36 @@ revisit. Cold start and idle RAM are tiebreakers only.
   the README. Not an apology — most agent tooling is mac-first.
 - **Out of v1:** SSH/remote, multi-platform, Monaco *editing*, command palette,
   project dashboards, NPU/local models, unsupervised agent-to-agent messaging,
-  worktree comparison, plugin systems, theming beyond one chosen look.
+  worktree comparison, plugin systems.
 - **In v1:** a read-only file viewer.
 
-**Done is defined as:** all six switch-bar items below work, and oikist has been used
+**Fence amended 2026-09-05, after the day 1 workday test.** Three items moved; the
+reasoning is in section 10.
+
+- **Moved in — git.** Was never on the fence, in or out; it is now explicitly in, bounded:
+  the diff of what an agent just changed, plus stage, commit, push, branch, log.
+  **Rebase, merge-conflict resolution and blame stay out** and hand off to VS Code, for
+  the same reason editing does.
+- **Moved in — the native agent view.** Agent panes stop being terminals. Section 10.
+- **Moved in — theming.** "Theming beyond one chosen look" is struck from the out-list,
+  because the one chosen look was measured against real use and lost. This buys a
+  revised look, not a theme system; a user-facing theme picker remains out.
+- **Held out, deliberately — editing.** "Rarely but it still happens" is the frequency a
+  hand-off serves better than an editor to maintain. The viewer stays read-only and
+  gains an *open in VS Code* action. Monaco stays out, and would also re-add ~40MB
+  immediately after section 2 justified a migration on footprint.
+
+**Done was defined as:** all six switch-bar items below work, and oikist has been used
 for one full workday without opening Wave.
+
+**Done is now defined as:** all six switch-bar items work, and oikist has been used for
+one full workday without reaching for **VS Code and its agent extensions**.
+
+**Why the criterion changed.** Day 1 ran on 2026-09-04 and Wave was never opened — the
+bar as written was met. It was the wrong bar. What got reached for instead was VS Code
+with the Claude and Codex extensions, which means the criterion had named a competitor
+that had already stopped being one. A test whose failure condition cannot occur is not a
+test. The replacement names what actually wins the work today.
 
 **Switch bar (the v1 spec, author's own words):**
 
@@ -290,6 +393,121 @@ instead opens Electron's own welcome window. `electron-builder` produces `oikist
 
 `electron-builder` is a devDependency and a build tool, not a runtime dependency, so
 rule 3 in `CLAUDE.md` — one native module — is untouched.
+
+---
+
+## 10. The agent pane stops being a terminal
+
+**Decided 2026-09-05, from the day 1 workday test.** This is the largest decision in the
+record after section 1, and it reverses an implementation choice rather than a stated
+one — section 0 already said the terminal was not the substrate. The code made every
+agent a terminal anyway.
+
+### The finding
+
+Day 1 ended with VS Code's agent extensions winning the work. Asked what they did
+better, the answer was seven things: reopening an old session; occasionally viewing and
+editing a file; git; **a caret instead of a block cursor**; **clicking into the middle of
+typed text to fix it**; **markdown-style prompt input**; **previewing files attached to a
+prompt.**
+
+The last four are one item. They are not styling, and no font size or colour fixes any
+of them. They are all consequences of a single fact: **the agent's prompt box is a
+ConPTY grid.** A grid has no caret, no cursor position to click to, no rich text and no
+attachment chips. xterm.js cannot provide them; neither can a different host language.
+The competitor won because its extensions drive the agent programmatically and render
+the conversation as real UI.
+
+**Recorded plainly because it is the kind of thing that gets rationalised away later:
+the seven complaints were read as a feature list for two hours before anyone noticed
+they were one architectural defect.**
+
+### The decision
+
+Agent panes become native conversation views. Terminal panes remain, for shells, where a
+terminal is the correct thing. `xterm.js` and the WebGL renderer stay — switch-bar item 1
+is still a requirement and the shell pane still has to carry `npm run build` output.
+
+**Transport: the real CLI binaries, spoken to over stream-json.** Not the API, not an
+SDK re-implementation. `claude --print --input-format stream-json --output-format
+stream-json`, with `--session-id` and `--resume`; `codex exec`, with its `resume` and
+`fork` subcommands. The process model is unchanged from today — oikist still spawns the
+same binary the user would have run, on the same subscription auth. Verified before
+deciding: `codex exec -i/--image` gives attachment preview a real backend, and
+`--disable-slash-commands` existing as a flag proves slash commands are **on** by
+default in print mode, so `/model`, `/resume` and the rest survive the transport change.
+
+### What this deletes
+
+`--include-hook-events` puts hook lifecycle events directly into the stream-json output.
+Agent state therefore arrives **inline, on the same pipe as the conversation**, and the
+entire out-of-band path is removed: **`src/main/agents/hook-server.ts` (127 lines) and
+`resources/hook-relay.mjs` are deleted, not ported.** With them go the ephemeral loopback
+listener, the per-run bearer token, the per-launch `--settings` file, and the documented
+trap that the relay must be run by a separately-resolved real `node` because
+`process.execPath` is `electron.exe`.
+
+This shrinks section 2's port list and removes a class of silent runtime failure. It is
+the single best consequence of the decision and it was not the reason for making it.
+
+### No raw-TUI escape hatch
+
+**Rejected, with the reason recorded so it can be revisited on evidence.** A per-pane
+flip to a live TUI was considered and cut: it is a *second transport*, not a display
+option — it keeps `pty.ts` on the agent path permanently, gives one conversation two
+representations, and puts pty back into the Rust port. It was worth paying for only if
+stream-json could not reach something used daily, and the slash-command finding above
+says it can. **If the next workday test finds a gap the TUI filled, add the flip then,
+with that gap named.** Not upfront, on a guess.
+
+### Attached sessions, and the two limitations that were called permanent
+
+`KNOWN-ISSUES.md` recorded two blocks as other people's platforms: Codex live state
+(`codex app-server daemon` is Unix-only, so an app-server cannot see a TUI in a pane),
+and Claude activity (2.1.238 deleted `status`, `waitingFor` and `statusUpdatedAt`).
+
+Both have a file-based route that neither block touches. Claude writes
+`~/.claude/projects/<slug>/<sessionId>.jsonl`; Codex writes
+`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`, whose first line is a `session_meta`
+carrying `session_id`, `cwd`, `cli_version` and `source`. Both are appended as the
+session runs — 181 and 373 files respectively on this machine when checked. **A file on
+disk has no Unix-only problem.**
+
+Two constraints on using them, both from existing rules. This is **inference**, so hard
+rule 7 forces `confident`, never `certain`. And these files are full conversation
+content, so oikist reads **mtime, size and message type only — never the text.**
+
+Note what this is *for*: agents oikist launches report themselves over stream-json with
+certainty. The JSONL route exists for **attached** sessions — ones started outside
+oikist — and for the session history browser below. It is the fallback, not the path.
+
+### Session history, git, and handoff
+
+- **Session history browser.** Every past session on the machine, both providers,
+  filterable by project, resumable. Built on the JSONL files above. No VS Code extension
+  does this, because each one sees only its own provider.
+- **Git, bounded.** The agent-diff — *what did this pane just change* — plus stage,
+  commit, push, branch and log. The bound exists because the principle that hands
+  editing to VS Code applies to rebase, merge conflicts and blame equally.
+- **Handoff loses the clipboard.** With both sides of the conversation inside oikist,
+  handoff pre-fills the target agent's composer and **leaves it unsent**. The human
+  presses enter. This removes the paste without removing the human, and stays inside the
+  fence's ban on unsupervised agent-to-agent messaging.
+
+### Order
+
+Each step ships on its own. **The migration is last**, and step 3 is a gate, not a
+formality.
+
+| | Step | Note |
+|---|---|---|
+| 1 | Look pass | Tracking, caps, rail width, dead space |
+| 2 | Native agent view | The thesis. Everything below is decoration if this misses |
+| 3 | **Workday test, against VS Code** | A gate. If the extensions still win, stop and re-plan |
+| 4 | Session history browser | |
+| 5 | Git, bounded | |
+| 6 | Handoff, hook events, discovery cost, directory chip | Cleanup pass |
+| 7 | Tauri migration | Section 2. Changes no behaviour by design |
 
 ---
 

@@ -3,7 +3,8 @@
 A Windows-only, agent-native development environment. Coding agents (Claude Code and
 Codex) are first-class objects, not processes that happen to live in terminal panes.
 
-**Status:** pre-M0. No implementation yet. Commands below appear as they are built.
+**Status:** M0-M8 complete. Day 1 workday test run 2026-09-04; it reversed two decisions
+and moved the fence. Current work is the `docs/DECISIONS.md` section 10 roadmap, step 1.
 
 ## Read first
 
@@ -31,11 +32,16 @@ file, so rebuilding replaces what the pin already resolves to. Reasoning in
 
 1. **Do not add anything on the v1 fence** (see below) without the fence being
    explicitly changed in `docs/DECISIONS.md` first.
-2. **TypeScript only.** No Go, no Rust, no new language runtimes. The escape hatch
-   for a measured hot path is documented in `docs/DECISIONS.md` section 2 — it
-   requires a measurement, not an opinion.
-3. **No new native modules.** `node-pty` is the one accepted native dependency.
-   Adding a second (e.g. `better-sqlite3`) needs a decision-record entry.
+2. **TypeScript now; a Rust host at step 7, and not before.** `docs/DECISIONS.md`
+   section 2 was superseded on 2026-09-05 — the host process moves to Rust under
+   Tauri, justified on a measured footprint (371MB shipped, 1.2MB of it ours). Until
+   step 7 of the section 10 roadmap, **this repo is TypeScript and adding Rust is
+   still wrong**: the product work comes first, on the code that exists. The renderer
+   and the pure domain layer (`layout.ts`, `agents.ts`, `handoff.ts`, `hooks.ts`,
+   `files.ts`) stay TypeScript permanently and are never ported.
+3. **No new native modules.** `node-pty` is the one accepted native dependency, until
+   step 7 replaces it with a Rust ConPTY crate. Adding any other (e.g.
+   `better-sqlite3`) needs a decision-record entry.
 4. **Never mutate the user's global agent config.** No writes to
    `~/.claude/settings.json` or `~/.codex/config.toml`. Owned agents get per-launch
    `--settings` and `--session-id`. oikist must change nothing about how Claude or
@@ -60,12 +66,20 @@ recorded in `docs/DECISIONS.md` section 7.
 
 **Out:** SSH/remote, multi-platform, Monaco *editing*, command palette, project
 dashboards, NPU/local models, unsupervised agent-to-agent messaging, worktree
-comparison, plugin systems, theming beyond one chosen look.
+comparison, plugin systems. Also out: rebase, merge-conflict resolution and blame —
+git is bounded, see below.
 
-**In:** a read-only file viewer.
+**In:** a read-only file viewer with an *open in VS Code* action; the native agent
+view; git bounded to the agent-diff plus stage, commit, push, branch, log; a revised
+look (one look, still no theme picker).
 
 **Done:** all six switch-bar items in `docs/DECISIONS.md` section 4 work, and oikist
-has been used for one full workday without opening Wave.
+has been used for one full workday **without reaching for VS Code and its agent
+extensions**. The old criterion said "without opening Wave"; day 1 met it while
+losing to VS Code, so the criterion named a competitor that had stopped being one.
+
+**Current work:** the section 10 roadmap. Step 1, the look pass. Do not start step 7
+(Tauri) early — the order is the decision, not just the destination.
 
 ## Writing plans
 
