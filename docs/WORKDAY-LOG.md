@@ -107,14 +107,27 @@ Those three are the *known* gaps. The point of the day is what else turns up.
 | **restore, then resume** | **passes** — `--resume` carries context on the native transport |
 | restore does not auto-launch | passes — restored agent panes stayed dormant |
 | shell panes | pass |
-| **Codex turns** | **fail — environment, not oikist.** See below |
+| **Codex turns** | **model blocker cleared; now quota-blocked until 03:39** |
 
-**Codex will fail every turn until this is fixed.** `~/.codex/config.toml` pins
-`gpt-6-astra`; the installed `codex-cli 0.149.0` cannot run it and returns *"requires a
-newer version of Codex"*. This affects Codex everywhere on this machine, not just oikist.
-oikist deliberately passes no `-m` override — substituting a model the user did not choose
-would be exactly the kind of silent behaviour change hard rule 4 exists to prevent — so
-the pane shows the real error. **Upgrade the CLI or change the model before the day
-starts**, or Codex is untestable and half the handoff feature with it.
+**Codex, resolved and then re-blocked — 2026-09-06.**
+
+The model problem is fixed: the CLI went `0.149.0` → **`0.153.4`**, and `gpt-6-astra`
+now runs. `~/.codex/config.toml` was not touched, which is the right outcome — oikist
+never passed a `-m` override, so upgrading the client was the only correct fix and it was
+the user's to make.
+
+It is now blocked on quota instead: the five-hour window reads **100% used, resets
+03:39**; the weekly is at 73%. A Codex pane launches and reports the reason in plain
+words — *"You've hit your usage limit… or try again at 3:39 AM"* — which is the task 6
+error-rendering fix doing its job, and worth noting as the first time a real failure
+arrived in the pane rather than silently.
+
+**Own the cause: the verification runs spent it.** Codex sat at 89% of the five-hour
+window before task 6, and task 6 plus today's two confirmations took the rest. This is
+section 6's hazard repeating almost exactly — *"a provider being out of quota silently
+shapes what gets built against it"* — except this time the quota went on proving the
+integration rather than on building it. **Either start the day after 03:39, or start
+before it and treat Codex as untested**, noting that the first Codex turn of the day is
+also the first unrehearsed one.
 
 - HH:MM · started · —
