@@ -1,9 +1,11 @@
 /**
- * The window's layout: tabs, each holding one or two terminal panes.
+ * The window's layout: tabs, each holding a tree of panes.
  *
- * Deliberately not a tiling tree. On a 14-inch screen with two to four agents you look
- * at one at a time and glance at the rail for the rest, so a tab list plus an optional
- * 2-up split covers the real cases without a layout engine to maintain.
+ * It was deliberately *not* a tiling tree until 2026-09-06, on the argument that a
+ * 14-inch screen has no room for six panes. Day 2 of real use disagreed in the first
+ * finding it produced, and section 5 of the decision record carries the reversal: the
+ * size argument was answering a question nobody had, and a pane you cannot rearrange is
+ * a pane you cannot get out of the way.
  *
  * Every function here is pure and takes its id generator, so the reducers can be tested
  * without React, Electron, or a filesystem. `parseLayout` treats its input as untrusted:
@@ -12,7 +14,18 @@
  */
 
 export const LAYOUT_VERSION = 1;
-export const MAX_PANES_PER_TAB = 2;
+/**
+ * Raised from 2 to 8 when tiling landed.
+ *
+ * The cap was never really about screen size — that argument was wrong, and section 5 of
+ * the decision record says why. It exists so a corrupt file cannot produce a thousand
+ * panes.
+ */
+export const MAX_PANES_PER_TAB = 8;
+
+/** How far a divider can be dragged before a pane would vanish. */
+export const MIN_RATIO = 0.1;
+export const MAX_RATIO = 0.9;
 
 /** A ceiling on restored tabs. Nothing legitimate reaches it; a corrupt file might. */
 export const MAX_TABS = 64;
@@ -48,11 +61,35 @@ export interface PaneState {
   readonly dormant?: true;
 }
 
+/**
+ * How the panes of a tab are arranged on screen.
+ *
+ * A tree of pane *ids*, held beside the flat pane list rather than replacing it. Keeping
+ * the panes flat means every existing reducer still works, a layout stored before tiling
+ * needs no migration, and — the load-bearing one — `parseLayout` can repair a broken
+ * arrangement against the pane list. A corrupt tree then costs the arrangement and never
+ * the panes. See `docs/PHASE-3-tiling.md`.
+ */
+export type Arrangement =
+  | { readonly kind: "leaf"; readonly paneId: string }
+  | {
+      readonly kind: "split";
+      readonly direction: "row" | "column";
+      readonly ratio: number;
+      readonly children: readonly [Arrangement, Arrangement];
+    };
+
+/** A path to a node: which child to take at each split, from the root. */
+export type ArrangementPath = readonly (0 | 1)[];
+
 export interface TabState {
   readonly id: string;
   readonly title: string;
   readonly panes: readonly PaneState[];
   readonly activePaneId: string;
+  readonly arrangement: Arrangement;
+  /** Temporarily showing one pane full-tab. Hides the others; does not rearrange them. */
+  readonly maximizedPaneId?: string;
 }
 
 export interface LayoutState {
@@ -62,6 +99,189 @@ export interface LayoutState {
 }
 
 export type PaneKind = "shell" | "claude" | "codex" | "files" | "handoff";
+
+function clampRatio(value: unknown): number {
+  const ratio = typeof value === "number" && Number.isFinite(value) ? value : 0.5;
+  return Math.min(MAX_RATIO, Math.max(MIN_RATIO, ratio));
+}
+
+/** Every pane id the tree mentions, in visual order. */
+export function arrangementPanes(node: Arrangement): string[] {
+  return node.kind === "leaf"
+    ? [node.paneId]
+    : [...arrangementPanes(node.children[0]), ...arrangementPanes(node.children[1])];
+}
+
+/** Builds a left-leaning arrangement for a flat list — the shape old layouts imply. */
+export function arrangementFor(paneIds: readonly string[]): Arrangement {
+  const [first, ...rest] = paneIds;
+  let node: Arrangement = { kind: "leaf", paneId: first ?? "" };
+  for (const paneId of rest) {
+    node = { kind: "split", direction: "row", ratio: 0.5, children: [node, { kind: "leaf", paneId }] };
+  }
+  return node;
+}
+
+/**
+ * Replaces one leaf, leaving every other node identical.
+ *
+ * Identity in, identity out: an untouched subtree must not be rebuilt, or React
+ * reconciles a pane that never moved and remounts a running agent.
+ */
+function replaceLeaf(node: Arrangement, paneId: string, made: (leaf: Arrangement) => Arrangement): Arrangement {
+  if (node.kind === "leaf") {
+    return node.paneId === paneId ? made(node) : node;
+  }
+  const left = replaceLeaf(node.children[0], paneId, made);
+  const right = replaceLeaf(node.children[1], paneId, made);
+  if (left === node.children[0] && right === node.children[1]) {
+    return node;
+  }
+  return { ...node, children: [left, right] };
+}
+
+/** Removes a leaf and collapses the split that held it onto the surviving sibling. */
+function removeLeaf(node: Arrangement, paneId: string): Arrangement | null {
+  if (node.kind === "leaf") {
+    return node.paneId === paneId ? null : node;
+  }
+  const left = removeLeaf(node.children[0], paneId);
+  const right = removeLeaf(node.children[1], paneId);
+  if (left === null) return right;
+  if (right === null) return left;
+  if (left === node.children[0] && right === node.children[1]) return node;
+  return { ...node, children: [left, right] };
+}
+
+function nodeAt(node: Arrangement, path: ArrangementPath): Arrangement | null {
+  let current: Arrangement = node;
+  for (const step of path) {
+    if (current.kind !== "split") return null;
+    current = current.children[step];
+  }
+  return current;
+}
+
+function mapAt(node: Arrangement, path: ArrangementPath, change: (found: Arrangement) => Arrangement): Arrangement {
+  if (path.length === 0) return change(node);
+  if (node.kind !== "split") return node;
+  const index = path[0] ?? 0;
+  const updated = mapAt(node.children[index], path.slice(1), change);
+  if (updated === node.children[index]) return node;
+  const children: [Arrangement, Arrangement] =
+    index === 0 ? [updated, node.children[1]] : [node.children[0], updated];
+  return { ...node, children };
+}
+
+function withTab(layout: LayoutState, tabId: string, change: (tab: TabState) => TabState): LayoutState {
+  const tab = layout.tabs.find((candidate) => candidate.id === tabId);
+  if (tab === undefined) return layout;
+  const next = change(tab);
+  if (next === tab) return layout;
+  return { ...layout, tabs: layout.tabs.map((candidate) => (candidate.id === tabId ? next : candidate)) };
+}
+
+/** Splits a pane, putting a new shell beside it in the given direction. */
+export function splitPane(
+  layout: LayoutState,
+  tabId: string,
+  paneId: string,
+  direction: "row" | "column",
+  nextId: IdFactory
+): LayoutState {
+  return withTab(layout, tabId, (tab) => {
+    if (tab.panes.length >= MAX_PANES_PER_TAB || !tab.panes.some((pane) => pane.id === paneId)) {
+      return tab;
+    }
+    const pane = newPane(nextId, "shell", paneCwd(tab));
+    const arrangement = replaceLeaf(tab.arrangement, paneId, (leaf) => ({
+      kind: "split",
+      direction,
+      ratio: 0.5,
+      children: [leaf, { kind: "leaf", paneId: pane.id }]
+    }));
+    return { ...tab, panes: [...tab.panes, pane], arrangement, activePaneId: pane.id };
+  });
+}
+
+/** Closes one pane. The last pane of a tab is replaced rather than removed. */
+export function closePane(
+  layout: LayoutState,
+  tabId: string,
+  paneId: string,
+  nextId: IdFactory
+): LayoutState {
+  return withTab(layout, tabId, (tab) => {
+    if (!tab.panes.some((pane) => pane.id === paneId)) return tab;
+    const panes = tab.panes.filter((pane) => pane.id !== paneId);
+    if (panes.length === 0) {
+      const pane = newPane(nextId, "shell", paneCwd(tab));
+      return {
+        ...tab,
+        panes: [pane],
+        arrangement: { kind: "leaf", paneId: pane.id },
+        activePaneId: pane.id
+      };
+    }
+    const arrangement = removeLeaf(tab.arrangement, paneId) ?? arrangementFor(panes.map((pane) => pane.id));
+    const keepMaximized = tab.maximizedPaneId !== undefined && tab.maximizedPaneId !== paneId;
+    const base: TabState = {
+      id: tab.id,
+      title: tab.title,
+      panes,
+      arrangement,
+      activePaneId: tab.activePaneId === paneId ? (panes[0]?.id ?? tab.activePaneId) : tab.activePaneId
+    };
+    // Nothing may stay maximised once it is gone.
+    return keepMaximized && tab.maximizedPaneId !== undefined
+      ? { ...base, maximizedPaneId: tab.maximizedPaneId }
+      : base;
+  });
+}
+
+/** Moves one divider. `path` addresses the split, from the root. */
+export function setRatio(
+  layout: LayoutState,
+  tabId: string,
+  path: ArrangementPath,
+  ratio: number
+): LayoutState {
+  return withTab(layout, tabId, (tab) => {
+    const target = nodeAt(tab.arrangement, path);
+    if (target === null || target.kind !== "split") return tab;
+    const clamped = clampRatio(ratio);
+    if (clamped === target.ratio) return tab;
+    return {
+      ...tab,
+      arrangement: mapAt(tab.arrangement, path, (node) =>
+        node.kind === "split" ? { ...node, ratio: clamped } : node
+      )
+    };
+  });
+}
+
+/**
+ * Shows one pane full-tab, or restores the arrangement.
+ *
+ * Temporary by design: it hides the others rather than rearranging them, so restoring is
+ * exact rather than reconstructed.
+ */
+export function toggleMaximized(layout: LayoutState, tabId: string, paneId: string): LayoutState {
+  return withTab(layout, tabId, (tab) => {
+    if (!tab.panes.some((pane) => pane.id === paneId)) return tab;
+    if (tab.maximizedPaneId === paneId) {
+      return {
+        id: tab.id,
+        title: tab.title,
+        panes: tab.panes,
+        arrangement: tab.arrangement,
+        activePaneId: tab.activePaneId
+      };
+    }
+    return { ...tab, maximizedPaneId: paneId, activePaneId: paneId };
+  });
+}
+
 
 function newPane(nextId: IdFactory, kind: PaneKind, cwd?: string): PaneState {
   const id = nextId();
@@ -102,7 +322,13 @@ function labelFor(kind: PaneKind, cwd?: string): string {
 
 function newTab(nextId: IdFactory, kind: PaneKind, cwd?: string): TabState {
   const pane = newPane(nextId, kind, cwd);
-  return { id: nextId(), title: labelFor(kind, cwd), panes: [pane], activePaneId: pane.id };
+  return {
+    id: nextId(),
+    title: labelFor(kind, cwd),
+    panes: [pane],
+    activePaneId: pane.id,
+    arrangement: { kind: "leaf", paneId: pane.id }
+  };
 }
 
 export function defaultLayout(nextId: IdFactory, cwd?: string): LayoutState {
@@ -152,15 +378,9 @@ export function splitTab(layout: LayoutState, tabId: string, nextId: IdFactory):
   if (tab === undefined || tab.panes.length >= MAX_PANES_PER_TAB) {
     return layout;
   }
-  const pane = newPane(nextId, "shell", paneCwd(tab));
-  return {
-    ...layout,
-    tabs: layout.tabs.map((candidate) =>
-      candidate.id === tabId
-        ? { ...candidate, panes: [...candidate.panes, pane], activePaneId: pane.id }
-        : candidate
-    )
-  };
+  // Kept as the plain "split the active pane to the right" verb the tab bar and
+  // Ctrl+Shift+E already use. Everything else goes through splitPane.
+  return splitPane(layout, tabId, tab.activePaneId, "row", nextId);
 }
 
 /** Records the agent session a pane is running, so a later restore can resume it. */
@@ -339,7 +559,75 @@ function readTab(value: unknown): TabState | null {
   const stored = readString(value.title, "shell");
   const active = panes.find((pane) => pane.id === activePaneId) ?? panes[0]!;
   const title = isBareKind(stored) ? labelFor(stored, active.cwd ?? active.path) : stored;
-  return { id: value.id, title, panes, activePaneId };
+  const arrangement = repairArrangement(value.arrangement, panes.map((pane) => pane.id));
+  const maximized = value.maximizedPaneId;
+  // A maximise naming a pane that is gone would hide every remaining pane behind
+  // nothing at all — the tab would open blank.
+  const keepMaximized =
+    typeof maximized === "string" && panes.some((pane) => pane.id === maximized);
+  return {
+    id: value.id,
+    title,
+    panes,
+    activePaneId,
+    arrangement,
+    ...(keepMaximized ? { maximizedPaneId: maximized as string } : {})
+  };
+}
+
+/**
+ * Makes a stored arrangement agree with the panes that actually exist.
+ *
+ * Two structures have to agree and only one of them holds content, so the rule is that
+ * the pane list wins: leaves naming a pane that is gone are pruned, and panes the tree
+ * forgot are appended rather than orphaned. A layout written before tiling has no
+ * arrangement at all and is simply given one.
+ *
+ * This is the reason the tree holds ids rather than panes. A tree holding the panes
+ * themselves has no fallback, because losing the tree would lose the content.
+ */
+function repairArrangement(value: unknown, paneIds: readonly string[]): Arrangement {
+  const pruned = readArrangement(value, new Set(paneIds));
+  const seen = pruned === null ? [] : arrangementPanes(pruned);
+  const missing = paneIds.filter((id) => !seen.includes(id));
+  if (pruned === null) {
+    return arrangementFor(paneIds);
+  }
+  return missing.reduce<Arrangement>(
+    (node, paneId) => ({
+      kind: "split",
+      direction: "row",
+      ratio: 0.5,
+      children: [node, { kind: "leaf", paneId }]
+    }),
+    pruned
+  );
+}
+
+/** Reads an untrusted node, dropping anything that does not name a live pane. */
+function readArrangement(value: unknown, live: ReadonlySet<string>): Arrangement | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const node = value as Record<string, unknown>;
+  if (node.kind === "leaf") {
+    return typeof node.paneId === "string" && live.has(node.paneId)
+      ? { kind: "leaf", paneId: node.paneId }
+      : null;
+  }
+  if (node.kind !== "split" || !Array.isArray(node.children)) {
+    return null;
+  }
+  const left = readArrangement(node.children[0], live);
+  const right = readArrangement(node.children[1], live);
+  if (left === null) return right;
+  if (right === null) return left;
+  return {
+    kind: "split",
+    direction: node.direction === "column" ? "column" : "row",
+    ratio: clampRatio(node.ratio),
+    children: [left, right]
+  };
 }
 
 function isBareKind(title: string): title is PaneKind {

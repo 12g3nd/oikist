@@ -7,7 +7,11 @@ import {
   createTab,
   defaultLayout,
   parseLayout,
+  closePane,
   setActivePane,
+  setRatio,
+  splitPane,
+  toggleMaximized,
   setActiveTab,
   activeCwd,
   splitTab,
@@ -37,7 +41,11 @@ test("a new tab is appended and becomes active", () => {
   assert.equal(layout.activeTabId, layout.tabs[1]?.id, "the new tab takes focus");
 });
 
-test("splitting adds a second pane and focuses it; splitting again is a no-op", () => {
+/*
+ * The 2-up cap was reversed on 2026-09-06 with section 5. What is still tested is that a
+ * cap exists at all: it is what stops a corrupt file producing a thousand panes.
+ */
+test("splitting adds a pane and focuses it; the cap still holds", () => {
   const next = ids("p");
   const start = defaultLayout(next);
   const split = splitTab(start, start.activeTabId!, next);
@@ -45,9 +53,14 @@ test("splitting adds a second pane and focuses it; splitting again is a no-op", 
   assert.equal(split.tabs[0]?.panes.length, 2);
   assert.equal(split.tabs[0]?.activePaneId, split.tabs[0]?.panes[1]?.id, "the new pane takes focus");
 
-  const again = splitTab(split, split.activeTabId!, next);
-  assert.equal(again.tabs[0]?.panes.length, MAX_PANES_PER_TAB, "never more than a 2-up split");
-  assert.deepEqual(again, split, "a no-op returns an equal layout");
+  let layout = split;
+  for (let n = 0; n < MAX_PANES_PER_TAB + 3; n += 1) {
+    layout = splitTab(layout, layout.activeTabId!, next);
+  }
+  assert.equal(layout.tabs[0]?.panes.length, MAX_PANES_PER_TAB, "the cap is never exceeded");
+  // Identity, not equality: a reducer that rebuilds state for an unchanged value makes a
+  // component reporting upward loop forever.
+  assert.equal(splitTab(layout, layout.activeTabId!, next), layout, "a no-op returns the same object");
 });
 
 test("closing one pane of a split leaves the other focused", () => {
@@ -439,4 +452,179 @@ test("a stored files tab is renamed from the directory it was browsing", () => {
     ids("w")
   );
   assert.equal(parsed.tabs[0]!.title, "oikist · files");
+});
+
+/*
+ * Tiling. Section 5's escape clause fired on day 2: "the windows feel rigid, I miss the
+ * modularity of the window panes of Wave."
+ *
+ * Arrangement is a tree of pane *ids*, held beside the flat pane list rather than
+ * replacing it — see docs/PHASE-3-tiling.md for why that choice is load-bearing for
+ * parseLayout's repair posture.
+ */
+test("a fresh tab arranges its single pane as one leaf", () => {
+  const layout = defaultLayout(ids("p"));
+  const tab = layout.tabs[0]!;
+  assert.deepEqual(tab.arrangement, { kind: "leaf", paneId: tab.panes[0]!.id });
+});
+
+test("splitting a pane replaces its leaf with a split holding both", () => {
+  const next = ids("p");
+  let layout = defaultLayout(next);
+  const tab = layout.tabs[0]!;
+  const first = tab.panes[0]!.id;
+
+  layout = splitPane(layout, tab.id, first, "row", next);
+  const after = layout.tabs[0]!;
+  assert.equal(after.panes.length, 2, "a new pane joins the flat list");
+  assert.equal(after.arrangement.kind, "split");
+  if (after.arrangement.kind !== "split") return;
+  assert.equal(after.arrangement.direction, "row");
+  assert.deepEqual(after.arrangement.children[0], { kind: "leaf", paneId: first });
+  assert.equal(after.arrangement.children[1]!.kind, "leaf");
+});
+
+test("splitting nests, so three panes are two splits deep", () => {
+  const next = ids("p");
+  let layout = defaultLayout(next);
+  const tab = layout.tabs[0]!;
+  layout = splitPane(layout, tab.id, tab.panes[0]!.id, "row", next);
+  const second = layout.tabs[0]!.panes[1]!.id;
+  layout = splitPane(layout, tab.id, second, "column", next);
+
+  assert.equal(layout.tabs[0]!.panes.length, 3);
+  const root = layout.tabs[0]!.arrangement;
+  assert.equal(root.kind, "split");
+  if (root.kind !== "split") return;
+  assert.equal(root.children[1]!.kind, "split", "the split happened at the second pane");
+});
+
+test("closing a pane collapses its split, leaving the sibling in place", () => {
+  const next = ids("p");
+  let layout = defaultLayout(next);
+  const tab = layout.tabs[0]!;
+  const first = tab.panes[0]!.id;
+  layout = splitPane(layout, tab.id, first, "row", next);
+  const second = layout.tabs[0]!.panes[1]!.id;
+
+  layout = closePane(layout, tab.id, second, next);
+  assert.equal(layout.tabs[0]!.panes.length, 1);
+  assert.deepEqual(layout.tabs[0]!.arrangement, { kind: "leaf", paneId: first });
+});
+
+test("a ratio is clamped so a pane can never be dragged to nothing", () => {
+  const next = ids("p");
+  let layout = defaultLayout(next);
+  const tab = layout.tabs[0]!;
+  layout = splitPane(layout, tab.id, tab.panes[0]!.id, "row", next);
+
+  layout = setRatio(layout, tab.id, [], 0.001);
+  const root = layout.tabs[0]!.arrangement;
+  assert.equal(root.kind, "split");
+  if (root.kind !== "split") return;
+  assert.ok(root.ratio >= 0.1 && root.ratio <= 0.9, `ratio clamped, got ${root.ratio}`);
+});
+
+/** Temporary: it hides the others, it does not rearrange them. */
+test("maximising records the pane and leaves the arrangement untouched", () => {
+  const next = ids("p");
+  let layout = defaultLayout(next);
+  const tab = layout.tabs[0]!;
+  const first = tab.panes[0]!.id;
+  layout = splitPane(layout, tab.id, first, "row", next);
+  const before = layout.tabs[0]!.arrangement;
+
+  layout = toggleMaximized(layout, tab.id, first);
+  assert.equal(layout.tabs[0]!.maximizedPaneId, first);
+  assert.equal(layout.tabs[0]!.arrangement, before, "the tree is identical, not rebuilt");
+
+  layout = toggleMaximized(layout, tab.id, first);
+  assert.equal(layout.tabs[0]!.maximizedPaneId, undefined);
+});
+
+test("closing the maximised pane clears the maximise", () => {
+  const next = ids("p");
+  let layout = defaultLayout(next);
+  const tab = layout.tabs[0]!;
+  layout = splitPane(layout, tab.id, tab.panes[0]!.id, "row", next);
+  const second = layout.tabs[0]!.panes[1]!.id;
+  layout = toggleMaximized(layout, tab.id, second);
+
+  layout = closePane(layout, tab.id, second, next);
+  assert.equal(layout.tabs[0]!.maximizedPaneId, undefined, "nothing may stay maximised once it is gone");
+});
+
+/**
+ * A layout stored before tiling existed has no arrangement at all. It must open, arranged
+ * as it was, rather than being discarded — the flat list is enough to rebuild from.
+ */
+test("a stored layout with no arrangement is given one", () => {
+  const stored = {
+    version: 1,
+    activeTabId: "t1",
+    tabs: [
+      {
+        id: "t1",
+        title: "shell",
+        activePaneId: "a",
+        panes: [
+          { id: "a", title: "shell" },
+          { id: "b", title: "shell" }
+        ]
+      }
+    ]
+  };
+  const layout = parseLayout(stored, ids("x"));
+  const tab = layout.tabs[0]!;
+  assert.equal(tab.panes.length, 2);
+  assert.equal(tab.arrangement.kind, "split", "two panes become a split, not a lost pane");
+});
+
+test("an arrangement naming a pane that does not exist is repaired, not thrown on", () => {
+  const stored = {
+    version: 1,
+    activeTabId: "t1",
+    tabs: [
+      {
+        id: "t1",
+        title: "shell",
+        activePaneId: "a",
+        panes: [{ id: "a", title: "shell" }],
+        arrangement: {
+          kind: "split",
+          direction: "row",
+          ratio: 0.5,
+          children: [
+            { kind: "leaf", paneId: "a" },
+            { kind: "leaf", paneId: "ghost" }
+          ]
+        }
+      }
+    ]
+  };
+  const layout = parseLayout(stored, ids("x"));
+  assert.deepEqual(layout.tabs[0]!.arrangement, { kind: "leaf", paneId: "a" });
+});
+
+test("a pane missing from the arrangement is appended rather than orphaned", () => {
+  const stored = {
+    version: 1,
+    activeTabId: "t1",
+    tabs: [
+      {
+        id: "t1",
+        title: "shell",
+        activePaneId: "a",
+        panes: [
+          { id: "a", title: "shell" },
+          { id: "b", title: "shell" }
+        ],
+        arrangement: { kind: "leaf", paneId: "a" }
+      }
+    ]
+  };
+  const layout = parseLayout(stored, ids("x"));
+  const tab = layout.tabs[0]!;
+  assert.equal(tab.panes.length, 2, "the pane survives");
+  assert.equal(tab.arrangement.kind, "split", "and becomes visible");
 });
