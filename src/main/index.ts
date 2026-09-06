@@ -89,6 +89,31 @@ async function captureIfRequested(window: BrowserWindow): Promise<void> {
       const clickSettle = Number(process.env.OIKIST_CLICK_SETTLE ?? "900");
       await new Promise((resolve) => setTimeout(resolve, Number.isFinite(clickSettle) ? clickSettle : 900));
     }
+    // Types into a field and submits, for verifying a view whose interesting state only
+    // exists after input — an agent conversation has nothing in it until someone speaks.
+    // Written through React's own value setter so the component sees a real change; a
+    // plain `value =` assignment is swallowed by React's descriptor.
+    const typeSpec = process.env.OIKIST_TYPE;
+    if (typeSpec !== undefined && typeSpec !== "") {
+      const separator = typeSpec.indexOf("::");
+      const selector = separator === -1 ? typeSpec : typeSpec.slice(0, separator);
+      const text = separator === -1 ? "" : typeSpec.slice(separator + 2);
+      const typed: unknown = await window.webContents.executeJavaScript(
+        `(() => {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!(el instanceof HTMLTextAreaElement) && !(el instanceof HTMLInputElement)) return false;
+          const proto = Object.getPrototypeOf(el);
+          Object.getOwnPropertyDescriptor(proto, "value").set.call(el, ${JSON.stringify(text)});
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+          return true;
+        })()`
+      );
+      console.log(`[type] ${selector} -> ${typed === true ? "typed" : "NO MATCH"}`);
+      const typeSettle = Number(process.env.OIKIST_TYPE_SETTLE ?? "12000");
+      await new Promise((resolve) => setTimeout(resolve, Number.isFinite(typeSettle) ? typeSettle : 12_000));
+    }
+
     const image = await window.webContents.capturePage();
     await writeFile(target, image.toPNG());
     console.log(`captured ${target}`);
@@ -405,6 +430,19 @@ ipcMain.handle(IPC.filesRead, (_event, path: string) => readTextFile(path));
 // Choosing a project is the one place the app needs a path it was not given. The picker
 // is the OS's own, so no directory listing crosses the bridge and a dismissed dialog is
 // a null rather than an error.
+ipcMain.handle(IPC.filesChooseFiles, async (event, startIn: unknown): Promise<readonly string[]> => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  const options = {
+    title: "Attach files",
+    properties: ["openFile" as const, "multiSelections" as const],
+    ...(typeof startIn === "string" && startIn !== "" ? { defaultPath: startIn } : {})
+  };
+  const result = window === null
+    ? await dialog.showOpenDialog(options)
+    : await dialog.showOpenDialog(window, options);
+  return result.canceled ? [] : result.filePaths;
+});
+
 ipcMain.handle(IPC.filesChoose, async (event, startIn: unknown): Promise<string | null> => {
   const window = BrowserWindow.fromWebContents(event.sender);
   const options = {

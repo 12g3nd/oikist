@@ -255,6 +255,54 @@ exercise; do not treat it as proven until then.
 
 ---
 
+## Task 5 result — a turn, end to end, with no ConPTY in it
+
+**Done 2026-09-05.** `AgentSession.tsx`, its styles, a `files:choose-files` channel for
+attachments, and Claude panes dispatched to it in `App.tsx`. 154/154, typecheck clean.
+
+**Verified by driving the real app**, not by reading: `+ Claude`, then a typed turn, then
+a capture. The pane showed `You — Reply with exactly: hello from oikist` and
+`Claude — hello from oikist`. That exercises the whole chain — composer, IPC, manager,
+child process, stream-json, `splitLines`, `reduceSession`, render — so **the manager's
+process plumbing is now executed rather than merely typechecked**, which is what task 4
+said had to happen before it counted.
+
+The four Q8 input complaints are answered by construction: a real `textarea` has a caret
+and click-to-position, holds markdown, and sits next to attachment chips.
+
+### What the first screenshot caught
+
+The pane said **"Starting Claude…" indefinitely.** Readiness was being read off
+`state.sessionId`, which only arrives with `init` — and `init` arrives *per turn*, so a
+session nobody has spoken to emits nothing at all and the message could never clear.
+Readiness now comes from the `start` promise resolving.
+
+This is the task 2 finding biting from the other direction: knowing `init` is per-turn
+prevented the reducer bug and still did not prevent this one, because the same fact has
+a second consequence — **a fresh session is silent, so silence cannot mean "not ready".**
+
+### `OIKIST_TYPE`
+
+`OIKIST_CLICK` could reach the pane but not put anything in it, and a conversation has no
+interesting state until someone speaks. `OIKIST_TYPE=<selector>::<text>` types and submits,
+in the same spirit as the capture and click affordances already documented in `CLAUDE.md`.
+It writes through React's own value setter — a plain `value =` assignment is swallowed by
+React's descriptor and the component never sees the change.
+
+### Known gaps, deliberately left
+
+- **The rail still reads `State unknown` for a native session**, visible in the capture.
+  Its activity comes from the launcher's map, which only hooks used to update, and the
+  native path installs no hooks. Task 7 connects it to `post_turn_summary`.
+- **Slash-command autocomplete is empty until the first turn**, because that is when
+  `init` first arrives. A property of the stream, not worth faking with a guessed list.
+- **Attachments are sent as `@path` references**, which the agent reads with its own
+  tools. No file content passes through oikist and nothing is uploaded. Image attachment
+  via `codex exec -i` is task 6.
+- **Codex panes still use the pty**, since task 6 has not verified its stream.
+
+---
+
 ## Architecture
 
 **One `AgentSession` per pane, in main.** Owns a child process, parses stdout JSONL into
@@ -312,7 +360,8 @@ seen working.
    result* above.** Hooks proved unnecessary for subagents too. Original:
    `launcher.ts`'s absolute-path resolution — node-pty does not search PATH, and neither
    should this.
-5. **`AgentSession.tsx` — turn list and composer.** The point of the whole phase:
+5. ~~**`AgentSession.tsx` — turn list and composer.**~~ **Done 2026-09-05. See *Task 5
+   result* above.** Verified by driving a real turn in the app. Original:
    a real `textarea` with a caret, click-to-position, markdown input, attachment chips,
    and slash-command autocomplete from `init.slash_commands`.
    **Watch the effect-dependency trap.** It has bitten three times, most recently with

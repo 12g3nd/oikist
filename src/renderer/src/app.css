@@ -761,3 +761,212 @@ body {
   white-space: pre-wrap;
   overflow-x: auto;
 }
+
+/*
+ * The native agent pane.
+ *
+ * A conversation, not a grid. Everything here exists because a ConPTY cannot do it:
+ * a caret, a click landing between two characters, wrapped markdown, attachment chips.
+ */
+.agent {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.agent-scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.agent-empty,
+.agent-working,
+.agent-needs,
+.agent-exited {
+  margin: 0;
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+
+.agent-working { color: var(--accent); }
+.agent-needs {
+  color: var(--danger);
+  border-left: 2px solid var(--danger);
+  padding-left: 8px;
+}
+.agent-exited { color: var(--danger); }
+
+.turn {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.turn-role {
+  font-size: 10px;
+  color: var(--fg-dim);
+  padding-top: 2px;
+}
+
+.turn--user .turn-role { color: var(--accent); }
+
+.turn-body { min-width: 0; }
+
+.turn-text {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.55;
+  /* Agent output is written as text, so its own line breaks are meaningful. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.turn-text:last-child { margin-bottom: 0; }
+
+/* Build output and diffs keep their shape, and scroll rather than widening the pane. */
+.turn-code {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-x: auto;
+}
+
+.turn-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.turn-tools li {
+  font-size: 10px;
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 1px 6px;
+}
+
+.composer {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chips,
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 2px 4px 2px 7px;
+  color: var(--fg);
+}
+
+.chip-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip-remove,
+.suggestions button {
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  cursor: pointer;
+  font: inherit;
+  padding: 0 2px;
+}
+
+.chip-remove:hover { color: var(--danger); }
+
+.suggestions button {
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 2px 7px;
+  color: var(--accent);
+}
+
+.suggestions button:hover { background: var(--bg); }
+
+.composer-input {
+  width: 100%;
+  resize: vertical;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.composer-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.composer-input::placeholder { color: var(--fg-dim); }
+
+.composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.composer-actions button {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--fg-dim);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  padding: 3px 10px;
+}
+
+.composer-actions button:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--fg-dim);
+}
+
+.composer-send {
+  color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+.composer-send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.composer-stop { color: var(--danger) !important; }

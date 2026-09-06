@@ -123,6 +123,11 @@ object reported `HasExited: True` while child processes survived, and Windows re
 PIDs fast enough that an id-based check finds an unrelated process. Poll by process
 **name** (`Get-Process electron`) against a baseline taken before launch.
 
+`OIKIST_TYPE=<selector>::<text>` types into a field and submits, for verifying a view whose
+interesting state only exists after input. It writes through React's own value setter,
+because a plain `value =` assignment is swallowed by React and the component never sees it.
+`OIKIST_TYPE_SETTLE` waits for what the input started.
+
 `OIKIST_CLOSE_TEST=<ms> npx electron .` closes the window on the normal user path, so a
 headless run can assert the app actually exits. `docs/KNOWN-ISSUES.md` records why this
 guard exists and how the original defect was found.

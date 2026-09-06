@@ -20,6 +20,7 @@ import {
 import { AgentRail } from "./AgentRail.js";
 import { FileViewer } from "./FileViewer.js";
 import { Handoff } from "./Handoff.js";
+import { AgentSessionPane } from "./AgentSession.js";
 import { TerminalPane } from "./Terminal.js";
 
 const newId = (): string => crypto.randomUUID();
@@ -277,6 +278,17 @@ export function App(): React.JSX.Element {
                   />
                 ) : pane.dormant === true ? (
                   <DormantAgent pane={pane} onResume={() => apply((current) => wakePane(current, tab.id, pane.id))} />
+                ) : pane.agent === "claude" ? (
+                  // Claude panes are conversations, not terminals. Codex stays on the pty
+                  // until its own event stream is verified — see phase 2, task 6.
+                  <AgentSessionPane
+                    focused={tab.id === activeTab.id && pane.id === tab.activePaneId}
+                    {...(pane.cwd === undefined ? {} : { cwd: pane.cwd })}
+                    {...(pane.sessionId === undefined ? {} : { resumeSessionId: pane.sessionId })}
+                    onAgentSession={(sessionId) =>
+                      apply((current) => setPaneSession(current, tab.id, pane.id, sessionId))
+                    }
+                  />
                 ) : (
                   <TerminalPane
                     focused={tab.id === activeTab.id && pane.id === tab.activePaneId}
