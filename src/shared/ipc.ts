@@ -91,6 +91,8 @@ export interface PtyBridge {
 }
 
 export interface SessionStartOptions {
+  /** Which agent. Defaults to Claude. */
+  readonly provider?: "claude" | "codex";
   readonly cwd?: string;
   /** Set to reopen a previous conversation rather than begin a new one. */
   readonly resumeSessionId?: string;

@@ -970,3 +970,12 @@ body {
 }
 
 .composer-stop { color: var(--danger) !important; }
+
+/* The agent talking about itself — a warning, a failed turn — rather than to you. */
+.agent-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--fg-dim);
+  border-left: 2px solid var(--border);
+  padding-left: 8px;
+}

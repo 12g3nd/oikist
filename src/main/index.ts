@@ -321,8 +321,10 @@ ipcMain.handle(IPC.sessionStart, async (event, options: SessionStartOptions): Pr
   if (sessions === undefined || launcher === null) {
     throw new Error("No agent host for this window.");
   }
-  const launch = await launcher.prepareSession(options.cwd, options.resumeSessionId);
+  const provider = options.provider ?? "claude";
+  const launch = await launcher.prepareSession(provider, options.cwd, options.resumeSessionId);
   const id = sessions.start({
+    provider,
     file: launch.file,
     sessionId: launch.sessionId,
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),

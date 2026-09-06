@@ -145,17 +145,28 @@ export class AgentLauncher {
    * `docs/PHASE-2-native-agent-view.md`.
    */
   async prepareSession(
+    provider: "claude" | "codex",
     cwd?: string,
     resumeSessionId?: string
   ): Promise<{ sessionId: string; file: string }> {
-    const file = await this.#resolveExecutable("claude");
+    const file = await this.#resolveExecutable(provider);
     if (file === null) {
-      throw new Error("Claude was not found on PATH. Install Claude Code, or open a shell pane instead.");
+      throw new Error(
+        provider === "codex"
+          ? "Codex was not found on PATH. Install the Codex CLI, or open a shell pane instead."
+          : "Claude was not found on PATH. Install Claude Code, or open a shell pane instead."
+      );
     }
 
+    /*
+     * Claude's id is assigned by oikist with `--session-id`. Codex has no such flag: it
+     * mints a thread id itself and announces it on the stream as `thread.started`, so the
+     * id below is oikist's own handle until the real one arrives.
+     */
     const sessionId = resumeSessionId ?? randomUUID();
     this.#launched.set(sessionId, {
       sessionId,
+      provider,
       // Honest until the stream says otherwise, exactly as `prepare` is.
       activity: "unknown",
       startedAt: Date.now(),

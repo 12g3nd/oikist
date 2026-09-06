@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { emptySession, type SessionState, type SessionTurn } from "../../shared/session.js";
 
 interface AgentSessionPaneProps {
+  readonly provider: "claude" | "codex";
   /** Marks which pane owns keyboard focus; only the focused pane takes input. */
   readonly focused: boolean;
   /** Where the agent starts. Absent means the home directory. */
@@ -24,6 +25,7 @@ interface AgentSessionPaneProps {
  * binary; only the transport changed.
  */
 export function AgentSessionPane({
+  provider,
   focused,
   cwd,
   resumeSessionId,
@@ -58,6 +60,7 @@ export function AgentSessionPane({
   onExitRef.current = onExit;
   const onAgentSessionRef = useRef(onAgentSession);
   onAgentSessionRef.current = onAgentSession;
+  const providerRef = useRef(provider);
   const cwdRef = useRef(cwd);
   const resumeRef = useRef(resumeSessionId);
 
@@ -79,6 +82,7 @@ export function AgentSessionPane({
 
     void window.oikist.session
       .start({
+        provider: providerRef.current,
         ...(cwdRef.current === undefined ? {} : { cwd: cwdRef.current }),
         ...(resumeRef.current === undefined ? {} : { resumeSessionId: resumeRef.current })
       })
@@ -139,6 +143,7 @@ export function AgentSessionPane({
   }, [draft, state.slashCommands]);
 
   const running = exitCode === null;
+  const label = provider === "codex" ? "Codex" : "Claude";
 
   function send(): void {
     const id = idRef.current;
@@ -166,19 +171,27 @@ export function AgentSessionPane({
       <div className="agent-scroll">
         {state.turns.length === 0 && running && (
           <p className="agent-empty">
-            {started ? "Ready. Type below to begin." : "Starting Claude…"}
+            {started ? "Ready. Type below to begin." : `Starting ${label}…`}
           </p>
         )}
         {state.turns.map((turn, index) => (
-          <Turn key={index} turn={turn} />
+          <Turn key={index} turn={turn} label={label} />
         ))}
         {state.activity === "working" && running && <p className="agent-working">Working…</p>}
-        {state.statusDetail !== null && state.activity === "needsAction" && (
-          <p className="agent-needs">{state.statusDetail}</p>
+        {/*
+          Shown whenever the agent has something to say about its own state, not only
+          when it wants the human. A Codex turn that fails reports why through
+          `turn.failed` and goes idle, so gating this on `needsAction` made a failed turn
+          completely silent — the pane showed the question and nothing else.
+        */}
+        {state.statusDetail !== null && (
+          <p className={state.activity === "needsAction" ? "agent-needs" : "agent-note"}>
+            {state.statusDetail}
+          </p>
         )}
         {!running && (
           <p className="agent-exited">
-            Claude exited{exitCode === 0 ? "" : ` with code ${exitCode}`}. Its output above is the
+            {label} exited{exitCode === 0 ? "" : ` with code ${exitCode}`}. Its output above is the
             record of why.
           </p>
         )}
@@ -225,7 +238,7 @@ export function AgentSessionPane({
           rows={3}
           spellCheck={false}
           disabled={!running}
-          placeholder={running ? "Ask Claude. Enter sends, Shift+Enter is a newline." : "Session ended."}
+          placeholder={running ? `Ask ${label}. Enter sends, Shift+Enter is a newline.` : "Session ended."}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
@@ -264,11 +277,17 @@ export function AgentSessionPane({
  * is rendered as preformatted text. Deliberately not a markdown library — a dependency
  * is a decision-record entry, and this covers what an agent transcript actually contains.
  */
-function Turn({ turn }: { readonly turn: SessionTurn }): React.JSX.Element {
+function Turn({
+  turn,
+  label
+}: {
+  readonly turn: SessionTurn;
+  readonly label: string;
+}): React.JSX.Element {
   const segments = useMemo(() => splitFences(turn.text), [turn.text]);
   return (
     <article className={`turn turn--${turn.role}`}>
-      <span className="turn-role">{turn.role === "user" ? "You" : "Claude"}</span>
+      <span className="turn-role">{turn.role === "user" ? "You" : label}</span>
       <div className="turn-body">
         {segments.map((segment, index) =>
           segment.code ? (

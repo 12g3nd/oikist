@@ -74,6 +74,83 @@ export function appendUserTurn(state: SessionState, text: string): SessionState 
   };
 }
 
+/**
+ * Folds one line of `codex exec --json` into the same state Claude produces.
+ *
+ * Codex speaks a different vocabulary — `thread.started`, `turn.started`,
+ * `item.completed`, `turn.completed`, `turn.failed` — and has a different session model:
+ * one process per turn, resumed by thread id, where Claude keeps one process for the
+ * whole conversation. Both were established by capture rather than from documentation.
+ *
+ * Only the item types actually observed are handled. Anything else is ignored rather
+ * than guessed at, and returns the identical object so it costs no re-render.
+ */
+/**
+ * Digs the human sentence out of a Codex failure.
+ *
+ * Observed: the real message arrives as a JSON *string* nested inside
+ * `turn.failed.error.message`, so rendering it directly fills the pane with an envelope
+ * and buries the one line worth reading. Anything that is not that shape is returned
+ * unchanged rather than mangled.
+ */
+function unwrapCodexError(message: string): string {
+  try {
+    const inner = asString(asRecord(asRecord(JSON.parse(message))?.error)?.message);
+    return inner ?? message;
+  } catch {
+    return message;
+  }
+}
+
+export function reduceCodex(state: SessionState, rawLine: string): SessionState {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawLine);
+  } catch {
+    return state;
+  }
+
+  const event = asRecord(parsed);
+  if (event === null) return state;
+
+  switch (asString(event.type)) {
+    case "thread.started": {
+      const threadId = asString(event.thread_id);
+      return threadId === null ? state : { ...state, sessionId: threadId };
+    }
+    case "turn.started":
+      return { ...state, activity: "working" };
+    case "turn.completed":
+      return { ...state, activity: "idle" };
+    case "turn.failed": {
+      const message = asString(asRecord(event.error)?.message);
+      return {
+        ...state,
+        activity: "idle",
+        statusDetail: message === null ? state.statusDetail : unwrapCodexError(message)
+      };
+    }
+    case "item.completed": {
+      const item = asRecord(event.item);
+      const itemType = asString(item?.type);
+      if (itemType === "agent_message") {
+        const text = asString(item?.text);
+        if (text === null) return state;
+        return { ...state, turns: [...state.turns, { role: "assistant", text, tools: [] }] };
+      }
+      if (itemType === "error") {
+        // Observed carrying non-fatal warnings — a shortened skill budget, a missing
+        // model description. Reported, but not as something the agent said.
+        const message = asString(item?.message);
+        return message === null ? state : { ...state, statusDetail: message };
+      }
+      return state;
+    }
+    default:
+      return state;
+  }
+}
+
 export interface SplitResult {
   readonly lines: readonly string[];
   /** The trailing fragment, if the chunk ended mid-line. Feed it back in as `held`. */

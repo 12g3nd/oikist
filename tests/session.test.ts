@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   appendUserTurn,
   emptySession,
+  reduceCodex,
   reduceSession,
   splitLines,
   type SessionState
@@ -258,4 +259,81 @@ test("a subagent's messages do not enter the main transcript", () => {
   ]);
   assert.equal(state.turns.length, 1, "only the top-level message is a turn");
   assert.deepEqual(state.turns[0]?.tools, [], "the subagent's tools are not the agent's");
+});
+
+/*
+ * Codex speaks a different vocabulary from Claude and has a different session model:
+ * `codex exec` runs one turn per process, resumed by thread id. Shapes below are from a
+ * real `codex exec --json` capture, not from documentation.
+ */
+function codex(event: unknown): string {
+  return JSON.stringify(event);
+}
+
+test("thread.started records the thread as the session id", () => {
+  const state = reduceCodex(emptySession(), codex({ type: "thread.started", thread_id: "01a0-thread" }));
+  assert.equal(state.sessionId, "01a0-thread");
+});
+
+test("an agent_message item becomes an assistant turn", () => {
+  const state = [
+    codex({ type: "thread.started", thread_id: "t" }),
+    codex({ type: "turn.started" }),
+    codex({ type: "item.completed", item: { id: "item_1", type: "agent_message", text: "ok" } })
+  ].reduce(reduceCodex, emptySession());
+  assert.equal(state.turns.length, 1);
+  assert.equal(state.turns[0]?.role, "assistant");
+  assert.equal(state.turns[0]?.text, "ok");
+});
+
+test("turn.started is working and turn.completed is idle", () => {
+  const working = reduceCodex(emptySession(), codex({ type: "turn.started" }));
+  assert.equal(working.activity, "working");
+  const done = reduceCodex(working, codex({ type: "turn.completed", usage: { input_tokens: 1 } }));
+  assert.equal(done.activity, "idle");
+});
+
+/** Observed: Codex reports non-fatal warnings as completed items of type `error`. */
+test("an error item is a status detail, not a turn", () => {
+  const state = reduceCodex(
+    emptySession(),
+    codex({ type: "item.completed", item: { id: "item_0", type: "error", message: "skills shortened" } })
+  );
+  assert.equal(state.turns.length, 0);
+  assert.equal(state.statusDetail, "skills shortened");
+});
+
+test("turn.failed reports why and stops claiming to be working", () => {
+  const state = reduceCodex(
+    reduceCodex(emptySession(), codex({ type: "turn.started" })),
+    codex({ type: "turn.failed", error: { message: "400 invalid_request_error" } })
+  );
+  assert.equal(state.activity, "idle");
+  assert.equal(state.statusDetail, "400 invalid_request_error");
+});
+
+test("an unrecognised codex item is ignored and returns the identical object", () => {
+  const before = reduceCodex(emptySession(), codex({ type: "thread.started", thread_id: "t" }));
+  assert.equal(reduceCodex(before, codex({ type: "item.completed", item: { type: "reasoning" } })), before);
+  assert.equal(reduceCodex(before, "{not json"), before);
+});
+
+/**
+ * Observed: Codex nests the real message as a JSON *string* inside `turn.failed.error
+ * .message`. Rendered raw it fills the pane with a JSON dump; the sentence inside it is
+ * the part a person can act on.
+ */
+test("a codex failure shows its message, not its JSON envelope", () => {
+  const envelope = JSON.stringify({
+    type: "error",
+    status: 400,
+    error: { type: "invalid_request_error", message: "The 'gpt-6-astra' model requires a newer version of Codex." }
+  });
+  const state = reduceCodex(emptySession(), codex({ type: "turn.failed", error: { message: envelope } }));
+  assert.equal(state.statusDetail, "The 'gpt-6-astra' model requires a newer version of Codex.");
+});
+
+test("a codex failure that is not JSON is shown as written", () => {
+  const state = reduceCodex(emptySession(), codex({ type: "turn.failed", error: { message: "network unreachable" } }));
+  assert.equal(state.statusDetail, "network unreachable");
 });

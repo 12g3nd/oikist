@@ -303,6 +303,76 @@ React's descriptor and the component never sees the change.
 
 ---
 
+## Task 6 result — Codex, and a second session model
+
+**Done 2026-09-05.** `reduceCodex`, a two-strategy `AgentSessionManager`, `+ Codex` panes
+dispatched to the native view. 162/162, typecheck clean. Quota was checked *first*, per
+the section 6 hazard: 89% of the five-hour window and 71% of the weekly, so this was done
+in four small runs rather than by iterating.
+
+### The event vocabulary, from capture
+
+```
+thread.started   { thread_id }              <- the session identity
+turn.started
+item.completed   { item: { id, type, text|message } }
+turn.completed   { usage: { input_tokens, cached_input_tokens, output_tokens, … } }
+turn.failed      { error: { message } }
+```
+
+Item types observed: `agent_message` (what Codex said) and `error` (non-fatal warnings —
+a shortened skill budget, missing model metadata). Others certainly exist; unobserved
+types are ignored rather than guessed at.
+
+### Codex runs one process per turn
+
+The spike resized the task, as the plan allowed. **`codex exec` takes one prompt and
+exits** — there is no `--input-format stream-json` and no long-lived pipe. Continuity
+comes from `codex exec resume <thread_id>`, verified: resuming returned the same thread
+id and the model still remembered the previous turn.
+
+So the manager now carries two strategies. Claude: one child for the conversation, turns
+written to stdin. Codex: **no child at all between turns**, one spawned per turn, and a
+process exiting is the end of a *turn* rather than of the session. That distinction is
+the `endsSession` flag in `#attach`.
+
+**`stdin` must be closed immediately** on a Codex turn. With it open, `codex exec` waits
+for more input and the turn never starts — which cost a run to discover.
+
+### The model is deliberately not overridden
+
+This machine's `~/.codex/config.toml` pins `gpt-6-astra`, which the installed CLI
+(`codex-cli 0.149.0`) cannot run: every turn fails with *"requires a newer version of
+Codex"*. oikist **passes no `-m` override**. Hard rule 4 is about not changing how Codex
+behaves, and quietly substituting a different model than the user chose is exactly that.
+The pane shows the real error instead, which is actionable; a silent substitution would
+not be.
+
+*(An environment note rather than a defect in this repo: that config will fail in any
+Codex client on this machine until the CLI is upgraded or the model changed.)*
+
+### Two defects the captures found
+
+**A failed Codex turn was completely silent.** `statusDetail` was rendered only when
+activity was `needsAction`, but `turn.failed` sets the detail and goes `idle` — so the
+pane showed the question and nothing else. It now renders whenever the agent has
+something to say about its own state. Found by looking at a screenshot with an empty
+pane, not by a test.
+
+**The failure was a JSON envelope.** Codex nests the real sentence as a JSON *string*
+inside `turn.failed.error.message`, so the pane filled with a dump. `unwrapCodexError`
+extracts the sentence and leaves anything of another shape untouched.
+
+### And one self-inflicted one, worth recording
+
+The Codex spawn code was written through a heredoc and `"\n"` arrived in the file as a
+literal newline inside a string, breaking the build. **`CLAUDE.md` documents this exact
+trap** — backslashes lose a level of escaping through the Bash tool, quoted heredocs
+included — and says to use the editor for backslash-bearing literals. The rule was
+written down, and walked into anyway.
+
+---
+
 ## Architecture
 
 **One `AgentSession` per pane, in main.** Owns a child process, parses stdout JSONL into
@@ -367,7 +437,8 @@ seen working.
    **Watch the effect-dependency trap.** It has bitten three times, most recently with
    `resumeSessionId` relaunching agents. Anything that round-trips through the parent
    goes in a ref, out of the deps.
-6. **Codex.** `codex exec --json`, its resume/fork subcommands, and `-i/--image` for
+6. ~~**Codex.**~~ **Done 2026-09-05. See *Task 6 result* above.** One process per turn,
+   resumed by thread id. Original:
    attachments. Shape unknown — treat task 6 as a spike that may resize itself.
 7. **Rail and handoff.** Activity from `post_turn_summary`; Claude limits from
    `rate_limit_event`, making the handoff view symmetric. Handoff pre-fills the target
