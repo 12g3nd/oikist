@@ -14,7 +14,8 @@ One `claude -p --output-format stream-json --include-hook-events --verbose --res
 run on 2026-09-05, five events. Everything below is observed, not assumed.
 
 **`system` / `init`** — first event. Carries `session_id`, `cwd`, `model`,
-`permissionMode`, `tools`, `agents`, `skills`, and **`slash_commands` — 50 of them**.
+`permissionMode`, `tools`, `agents`, `skills`, and **`slash_commands`** (count varies with
+configuration: 50 under `--restricted`, 242 in a normal session).
 
 **`assistant`** — `message` in Anthropic message shape, plus `parent_tool_use_id`,
 `uuid`, `timestamp`.
@@ -44,13 +45,13 @@ run on 2026-09-05, five events. Everything below is observed, not assumed.
    says this app exists to answer — is now *published by the CLI* rather than deduced
    from hook timing.
 3. **The slash-command worry behind the raw-TUI escape hatch.** `init.slash_commands`
-   enumerates all 50. The composer can offer them natively. Section 10's rejection of
+   enumerates them all. The composer can offer them natively. Section 10's rejection of
    the escape hatch now rests on an observation, not an inference from a flag name.
 
 ### What is NOT verified — do not plan as if it is
 
 - ~~`--include-hook-events` is unproven.~~ **Settled by task 1 — see below.**
-- **`--input-format stream-json` multi-turn was not exercised.** One-shot only. Task 2.
+- ~~`--input-format stream-json` multi-turn was not exercised.~~ **Settled by task 2.**
 - **`codex exec --json` shape is unknown.** The flag exists ("Print events to stdout as
   JSONL"); nothing was spent confirming its events. Task 6. Note the section 6 hazard:
   the Codex weekly window has been exhausted before and silently shaped what got built.
@@ -113,6 +114,59 @@ A prompt that lets the model choose whether to use a tool is not a controlled ar
 
 ---
 
+## Task 2 result — one long-lived process, and a reducer trap
+
+**Run twice, 2026-09-05, identical both times.** Two turns over a single stdin pipe with
+`--input-format stream-json` and an assigned `--session-id`:
+
+| | |
+|---|---|
+| turns completed | 2 |
+| process alive between turns | **true** (`exitCode === null`) |
+| unique session ids | **1** — the one requested |
+| context retained | turn 1 planted "47", turn 2 answered `47` |
+| exit | 0, after stdin closed |
+
+**So `AgentSession` owns a long-lived child process.** Tasks 3 and 5 keep the shape the
+plan assumed; the one-process-per-turn `--resume` fallback is not needed.
+
+### Observed sequence
+
+```
+hook_started x5, hook_response x5          <- SessionStart hooks, ONCE, at process start
+init, assistant, rate_limit_event, post_turn_summary, result   <- turn 1
+init, assistant, rate_limit_event, post_turn_summary, result   <- turn 2
+```
+
+### The trap: `init` is per turn, not per session
+
+Two `init` events, one process, one session id, context intact. **A reducer that treats
+`init` as "new session, reset state" would wipe the conversation on every turn.** This is
+the defect this experiment existed to prevent, and it would not have been obvious from
+the flag documentation — `system/init` reads like a session-open event and is not one.
+
+Turn boundaries are `result`. Session boundaries are the process. Do not conflate them.
+
+Correspondingly: `SessionStart` hook events fire **once at process start**, not per turn,
+so they cannot be used as a per-turn signal.
+
+### Fixtures must be sanitised before entering this repo
+
+The repo is public. A raw captured stream carries, in `init` alone: `cwd` including the
+username, `messaging_socket_path` (a named pipe), `powershell_path`, and a full
+enumeration of the machine's **242 slash commands, 190 skills, 14 plugins and 17
+agents** — a complete inventory of the author's tooling. `rate_limit_event` carries real
+utilisation figures, and `hook_name` values name the user's own global hooks.
+
+**Task 3's fixtures are hand-reduced to the fields the reducer consumes**, with ids,
+paths and counts replaced by constants. Never commit a captured stream verbatim.
+
+*(Note: the "50 slash commands" figure recorded earlier in this file came from a
+`--restricted` run. A normal session reports 242. The count is configuration-dependent
+and nothing should be built on the number itself.)*
+
+---
+
 ## Architecture
 
 **One `AgentSession` per pane, in main.** Owns a child process, parses stdout JSONL into
@@ -161,9 +215,8 @@ Ordered. Each is independently verifiable; do not start one before its predecess
 seen working.
 
 1. ~~**Prove `--include-hook-events`.**~~ **Done 2026-09-05. See *Task 1 result* below.**
-2. **Prove multi-turn `--input-format stream-json`.** Two turns over one stdin pipe,
-   with `--session-id`. Confirm the process stays alive between turns; if it does not,
-   the model is one process per turn with `--resume`, which changes tasks 3 and 5.
+2. ~~**Prove multi-turn `--input-format stream-json`.**~~ **Done 2026-09-05. See *Task 2
+   result* above.** The process survives; `AgentSession` owns a long-lived child.
 3. **`src/shared/session.ts` — pure reducers, TDD.** Events in, turn list and activity
    out. Domain layer, so failing test first, per the testing split. Fixtures come from
    tasks 1 and 2, not from imagination.
