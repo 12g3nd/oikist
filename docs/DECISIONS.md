@@ -1,10 +1,12 @@
 # oikist — Design Decisions
 
-**Status:** M0-M8 complete, spike included. All six switch-bar items are built. The day 1
-workday test ran on 2026-09-04: Wave was never opened, and VS Code's agent extensions won
-the work instead. That result reversed two decisions and moved the fence — see sections
-2, 3, 4 and 10. Current work is the section 10 roadmap, step 1.
-**Recorded:** 2026-09-03 · **Amended:** 2026-09-05
+**Status:** M0-M8 complete. Section 10 (the native agent view) is built and shipped.
+
+Two workday tests have run. Day 1 (2026-09-04) reversed the language and host decisions
+and moved the fence — sections 2, 3, 4, 10. Day 2 (2026-09-06) failed against the native
+agent view, reversed the layout decision in section 5, and produced sections 11 and 12.
+**Current work is the section 12 roadmap, step 1.**
+**Recorded:** 2026-09-03 · **Amended:** 2026-09-05, 2026-09-06
 
 This is the decision record for oikist, a Windows-only, agent-native development
 environment. It exists so that neither future-me nor any agent working in this repo
@@ -203,8 +205,11 @@ reasoning is in section 10.
 **Done was defined as:** all six switch-bar items below work, and oikist has been used
 for one full workday without opening Wave.
 
-**Done is now defined as:** all six switch-bar items work, and oikist has been used for
-one full workday without reaching for **VS Code and its agent extensions**.
+**Done was then redefined as:** one full workday without reaching for VS Code and its
+agent extensions. **That criterion is retired too — see section 12.** It named the wrong
+competitor twice in two attempts. What replaces it is an instrument rather than a bar:
+log every defection to another tool and what it was for, with a single full workday test
+kept for the very end.
 
 **Why the criterion changed.** Day 1 ran on 2026-09-04 and Wave was never opened — the
 bar as written was met. It was the wrong bar. What got reached for instead was VS Code
@@ -231,6 +236,29 @@ the shell, import the rest into Electron main. A daemon was rejected: its only r
 advantage is tracking attention while oikist is closed, and Phase 3's Ruling 3
 mandates no persistence (there is an fs-spy test asserting nothing is written), so a
 daemon would preserve nothing. It buys a port, a token, and a second process.
+
+**Layout — superseded 2026-09-06 by the day 2 test. Tiling is in.**
+
+The original decision is below and its escape clause has fired. It ended *"add tiling
+later, against a working app, if it is ever actually missed"* — and day 2's first finding
+was, verbatim, *"the windows feel rigid, I miss the modularity of the window panes of
+Wave."* Missed by name, on the first day of real use, against a working app. That is
+exactly the condition the clause named, so the clause is honoured rather than argued
+with.
+
+**What was wrong with the original reasoning:** it priced screen real estate and forgot
+that a pane you cannot rearrange is a pane you cannot get *out of the way*. Temporary
+maximise — also asked for on day 2 — is the other half of the same feature, and it is
+what makes many panes survivable on a 14-inch screen. The size argument was answering a
+question nobody had.
+
+**Also reversed: one project at a time.** The tab model assumed it and no section ever
+argued for it. Day 2: *"I see only one project at a time, and it feels clunky to set
+up."*
+
+---
+
+**The original decision, retained for the record:**
 
 **Layout: tabs + optional 2-up split, with a persistent agent rail as the spine.**
 No tiling engine. The constraint nobody named in the original design chat is screen
@@ -508,6 +536,77 @@ formality.
 | 5 | Git, bounded | |
 | 6 | Handoff, hook events, discovery cost, directory chip | Cleanup pass |
 | 7 | Tauri migration | Section 2. Changes no behaviour by design |
+
+---
+
+## 11. oikist is a client over harnesses, not a harness
+
+**Recorded 2026-09-06, after the day 2 test**, because the scope of that test's feedback
+cannot be judged without it.
+
+**A harness owns the agent loop**: it assembles context, calls the model, executes tools,
+decides when to stop. Claude Code and Codex are harnesses. **oikist is not one.** It
+spawns them as child processes and renders their event streams; it never calls a model,
+never runs a tool on an agent's behalf, and holds no API key. It is a *client* over
+harnesses — a multiplexer.
+
+That single fact bounds the scope of every feature request this project will ever get.
+
+**oikist does not owe you the agents' tools.** Bash, Edit, Grep and the rest live inside
+the harness and always will; reproducing them would mean becoming a harness, which means
+owning prompts, context assembly and a model bill. What oikist owes is the set of things
+**a harness structurally cannot do, because each one is a single process in a single
+terminal**: show several at once, show what each is doing, move work between them, and
+give them somewhere to live.
+
+### Why this had to be written down
+
+Day 2 asked for *"all the tools that the regular Codex, Claude Code, VS Code +
+extensions, and Wave have together."* Measured:
+
+| | lines |
+|---|---|
+| oikist | 4,648 |
+| Wave alone | 149,723 (86k Go + 64k TS) |
+
+**Wave by itself is 32x oikist, and it is one of four.** Chasing that target produces a
+worse Wave, a worse VS Code and a worse terminal at the same time, while abandoning the
+question section 0 says this app exists to answer — which none of those four answer.
+
+**Section 0's thesis stands** (confirmed 2026-09-06): oikist answers *"which agent needs
+me, where, and what has it done."* The day 2 findings are how it earns daily use, not
+what it is for. A Wave affordance is adopted when it serves that question or removes
+friction from it, and declined when it is simply another thing Wave has.
+
+---
+
+## 12. The day 2 roadmap
+
+**Replaces section 10's order**, which ended at its own step 3 gate. Steps 4-7 there
+(session history, git, cleanup, Tauri) are not cancelled; they now sit behind these.
+
+Day 2's six findings are not a tool list. They are **four structural gaps plus a
+surface** — and every one is something a harness cannot provide for itself, which is
+what section 11 says oikist is for.
+
+| | Step | From | Note |
+|---|---|---|---|
+| 1 | **Status line per pane** | *"how the hell am I supposed to know what model I'm using, effort, thinking, usage"* | Cheapest by far: model, permission mode and both usage windows are **already parsed and discarded** |
+| 2 | **Tiling + temporary maximise** | *"the windows feel rigid"* | Section 5's escape clause, fired |
+| 3 | **Visual depth, denser, orbit noir** | *"too flat… this looks like a concept"* | The look pass went too far the other way |
+| 4 | **Multiple projects** | *"I see only one project at a time"* | |
+| 5 | **Browser pane** | *"where's the web browser"* | A `WebContentsView`; the one Wave feature that is not 32x anything |
+
+### Done, redefined
+
+**The workday test is no longer the criterion** — it named the wrong competitor twice.
+Day 1 named Wave and lost to VS Code; day 2 named VS Code and lost to a Wave-style window
+and lazygit. A bar rewritten after every attempt measures nothing.
+
+**Replacement: log every defection, do not predict it.** Whenever another tool gets
+opened, write down what it was for. That is an instrument rather than a pass/fail, and it
+cannot name the wrong competitor because it names none. A full workday test returns
+**once, at the very end**, as final validation rather than as the recurring gate.
 
 ---
 

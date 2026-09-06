@@ -3,8 +3,14 @@
 A Windows-only, agent-native development environment. Coding agents (Claude Code and
 Codex) are first-class objects, not processes that happen to live in terminal panes.
 
-**Status:** M0-M8 complete. Day 1 workday test run 2026-09-04; it reversed two decisions
-and moved the fence. Current work is the `docs/DECISIONS.md` section 10 roadmap, step 1.
+**Status:** M0-M8 complete; the native agent view (section 10) is shipped. Two workday
+tests have run and both failed, each reversing decisions. Current work is the
+`docs/DECISIONS.md` **section 12** roadmap, step 1 — a status line per pane.
+
+**oikist is a client over harnesses, not a harness** (section 11). Claude Code and Codex
+own the agent loop; oikist spawns them and renders their streams. It never calls a model
+and never runs a tool on an agent's behalf, so it does not owe you the agents' tools — it
+owes what a single-process harness cannot do for itself.
 
 ## Read first
 
@@ -67,19 +73,22 @@ recorded in `docs/DECISIONS.md` section 7.
 **Out:** SSH/remote, multi-platform, Monaco *editing*, command palette, project
 dashboards, NPU/local models, unsupervised agent-to-agent messaging, worktree
 comparison, plugin systems. Also out: rebase, merge-conflict resolution and blame —
-git is bounded, see below.
+git is bounded, see below. **And out permanently: the agents' own tools.** Bash, Edit,
+Grep and the rest belong to the harness; reproducing them means becoming one.
 
 **In:** a read-only file viewer with an *open in VS Code* action; the native agent
 view; git bounded to the agent-diff plus stage, commit, push, branch, log; a revised
-look (one look, still no theme picker).
+look (one look, still no theme picker). **Added 2026-09-06 by the day 2 test:** a status
+line per pane, **tiling with temporary maximise** (section 5's escape clause fired),
+multiple projects at once, and a browser pane.
 
-**Done:** all six switch-bar items in `docs/DECISIONS.md` section 4 work, and oikist
-has been used for one full workday **without reaching for VS Code and its agent
-extensions**. The old criterion said "without opening Wave"; day 1 met it while
-losing to VS Code, so the criterion named a competitor that had stopped being one.
+**Done:** no longer a workday test. It named the wrong competitor twice — Wave, then
+VS Code — and a bar rewritten after every attempt measures nothing. **Log every
+defection to another tool and what it was for**, in `docs/WORKDAY-LOG.md`. One full
+workday test returns at the very end as final validation.
 
-**Current work:** the section 10 roadmap. Step 1, the look pass. Do not start step 7
-(Tauri) early — the order is the decision, not just the destination.
+**Current work:** the section 12 roadmap. Step 1, the status line. Tauri is still last —
+the order is the decision, not just the destination.
 
 ## Writing plans
 
