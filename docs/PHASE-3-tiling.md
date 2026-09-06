@@ -67,9 +67,10 @@ a corrupt file from producing a thousand panes, and it was never really about sc
 2. **`parseLayout` repair.** Prune, append, clamp ratios into a sane band, and drop a
    `maximizedPaneId` naming a pane that no longer exists. Fuzz it with the existing
    untrusted-input tests as the model.
-3. **Recursive rendering.** One component walking the tree into nested flex boxes, with a
-   draggable divider per split. Panes keep their identity across re-arrangement so a
-   running agent is never remounted — **this is the one that can silently kill a session**.
+3. **Rendering.** ~~One component walking the tree into nested flex boxes~~ — **this was
+   wrong, see the result below.** Nesting is exactly what moves a pane in the React tree.
+   Panes must keep their identity across re-arrangement so a running agent is never
+   remounted — **this is the one that can silently kill a session**.
 4. **Maximise.** Render only the maximised leaf; everything else stays mounted and hidden.
    `[hidden]` needs `display: none !important` here, for the reason already in
    `CLAUDE.md` — a hidden pane that keeps rendering is how the terminal bug happened.
@@ -110,13 +111,15 @@ process count is unchanged, rather than by reading the code.
 
 Tasks 1-5 done. 162/162, typecheck clean.
 
-**The renderer does not nest, which is how the remount trap was removed.** Rather than
-walking the tree into nested elements,  turns it into flat rectangles and the
-panes are rendered as one list, absolutely positioned. Splitting changes styles and never
-DOM structure, so a pane cannot move in the React tree and cannot be remounted. The trap
-is gone by construction rather than by remembering to avoid it.
+**The renderer does not nest, which is how the remount trap was removed.** Task 3 above
+called for nested flex boxes; that was the wrong design and was abandoned during the work.
+`layoutRects` turns the tree into flat rectangles instead, and the panes render as one
+absolutely positioned list. Splitting changes styles and never DOM structure, so a pane
+cannot move in the React tree and therefore cannot be remounted. **The trap is gone by
+construction rather than by remembering to avoid it** — which is worth more than being
+careful, because care is what failed the three previous times this class of defect landed.
 
-**Verified by measurement, and the first measurement was invalid.** Counting 
+**Verified by measurement, and the first measurement was invalid.** Counting `claude`
 processes before and after the run showed 14 and 14 — meaningless, because the app quits
 after the capture and disposes its sessions, so "after" was sampled once the agent was
 already dead. Sampling *during* the run gave 15 / 15 / 16, and the 16 was noise: this
@@ -125,14 +128,18 @@ machine runs Claude Code, so the process count drifts on its own.
 What settled it was **identity rather than count**. The pane started PID 30548, and 30548
 was still alive after the split:
 
+```
+agent PID started by the pane: 30548
+PASS - the agent process survived the split; no remount
+```
 
-
-A restart would have killed that pid and made a new one. Immune to background noise, and
-the third time in this project that a count was believed before the instrument was.
+A restart would have killed that pid and made a new one, so identity is immune to the
+background noise a count cannot separate. This is the third time in this project that a
+number was believed before the instrument was.
 
 ### Two things added along the way
 
-** takes a sequence**, separated by , with  between
+**`OIKIST_CLICK` takes a sequence**, separated by `;;`, with `OIKIST_CLICK_GAP` between
 steps. Proving a split does not restart an agent needs two actions and the affordance
 only did one.
 
