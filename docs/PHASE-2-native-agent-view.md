@@ -94,7 +94,7 @@ bearer token and the real-`node` resolution all die.
 blocks, and `post_turn_summary` carries `needs_action`. Between them, "what is this agent
 doing" may need no hooks at all — which would drop the settings file too. **Unverified:
 whether `SubagentStart`/`SubagentStop` (the M8 feature) have a non-hook equivalent.**
-Decide during task 3, on fixtures, not now.
+**Answered by task 3 for activity (hooks unnecessary); still open for subagents.**
 
 ### The confound, recorded because it nearly produced a wrong answer
 
@@ -167,6 +167,43 @@ and nothing should be built on the number itself.)*
 
 ---
 
+## Task 3 result — the reducer, and hooks turn out to be optional
+
+**Done 2026-09-05.** `src/shared/session.ts` + `tests/session.test.ts`, 12 tests, written
+failing first. 147/147 across the suite, typecheck clean.
+
+`reduceSession(state, rawLine)` folds one stdout line into `SessionState` —
+`sessionId`, `model`, `slashCommands`, `turns`, `activity`, `statusDetail`, `limits`.
+
+Three properties it holds, each with a test and each earned from an earlier finding:
+
+- **A second `init` keeps the transcript.** The task 2 trap, now a regression test.
+- **An unchanged event returns the identical object.** `layout.ts` already learned that a
+  reducer rebuilding state for a no-op makes a component reporting upward loop forever.
+- **Nothing throws.** A malformed line costs that line, matching `parseLayout`'s posture.
+
+### The open question from task 1, answered: hooks are not needed for activity
+
+The reducer ignores hook events entirely and still produces a complete activity model —
+`working` from `assistant` and `init`, `needsAction` from `post_turn_summary`, `idle`
+from `result`, with `needsAction` outranking `result` because the human is still owed
+something. **So the per-launch `--settings` file is not needed for the rail**, and
+`hook-server.ts`, `hook-relay.mjs` and the settings file can all go.
+
+**One thing still gates that: subagent visibility (M8).** The reducer as written does not
+report subagents. Two candidate non-hook routes, neither verified:
+
+- `assistant` events carry **`parent_tool_use_id`** — non-null plausibly marks a message
+  produced inside a `Task` call, which is how the JSONL transcripts mark sidechains.
+- `result` carries **`subagent_stats`**, though only at the end of a turn.
+
+**Do not delete the settings file until one of those is confirmed to name the subagent**
+the way `SubagentStart`'s `subagent_type` does today. That experiment belongs in task 4,
+where a real session is being driven anyway and a `Task` call costs nothing extra to
+observe.
+
+---
+
 ## Architecture
 
 **One `AgentSession` per pane, in main.** Owns a child process, parses stdout JSONL into
@@ -217,9 +254,9 @@ seen working.
 1. ~~**Prove `--include-hook-events`.**~~ **Done 2026-09-05. See *Task 1 result* below.**
 2. ~~**Prove multi-turn `--input-format stream-json`.**~~ **Done 2026-09-05. See *Task 2
    result* above.** The process survives; `AgentSession` owns a long-lived child.
-3. **`src/shared/session.ts` — pure reducers, TDD.** Events in, turn list and activity
-   out. Domain layer, so failing test first, per the testing split. Fixtures come from
-   tasks 1 and 2, not from imagination.
+3. ~~**`src/shared/session.ts` — pure reducers, TDD.**~~ **Done 2026-09-05. See *Task 3
+   result* above.** 12 tests, written failing first; hooks proved unnecessary for
+   activity, with subagents the one open gate.
 4. **`AgentSession` in main + the six IPC channels.** Spawn, parse, reduce, push. Reuse
    `launcher.ts`'s absolute-path resolution — node-pty does not search PATH, and neither
    should this.
