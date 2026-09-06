@@ -1278,3 +1278,101 @@ body {
 .tab--active .tab-close { opacity: 0.6; }
 
 .tab-close:hover { opacity: 1; background: var(--raised); }
+
+/*
+ * Projects.
+ *
+ * Day 2: "I see only one project at a time." The rail was always meant to be the spine;
+ * this is what it is a spine of — every project that is open, what each is running, and
+ * one click to be in it.
+ */
+.project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0 0 4px;
+  padding: 0;
+  list-style: none;
+}
+
+.project {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 90ms ease-out, color 90ms ease-out, border-color 90ms ease-out;
+}
+
+.project:hover {
+  background: var(--raised);
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.project--active {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--fg);
+}
+
+.project-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-faint);
+}
+
+/* An agent count only appears when there is one, so a quiet project stays quiet. */
+.project-agents {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.project-agents::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
+}
+
+.rail-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--fg-dim);
+  cursor: pointer;
+  transition: background 90ms ease-out, color 90ms ease-out, border-color 90ms ease-out;
+}
+
+.rail-add:hover {
+  background: var(--raised);
+  border-color: var(--border);
+  color: var(--fg);
+}

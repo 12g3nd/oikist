@@ -13,6 +13,8 @@
  * older version.
  */
 
+import { projectFromCwd } from "./agents.js";
+
 export const LAYOUT_VERSION = 1;
 /**
  * Raised from 2 to 8 when tiling landed.
@@ -572,6 +574,58 @@ export function closeTab(layout: LayoutState, tabId: string, nextId: IdFactory):
 }
 
 /** Where the focused pane started, if it has a directory at all. */
+
+/** The tabs sharing one working directory. */
+export interface ProjectView {
+  /** Absent for tabs opened without a directory — the home bucket. */
+  readonly path?: string;
+  readonly name: string;
+  readonly tabIds: readonly string[];
+  /** Whether the active tab is inside this project. */
+  readonly active: boolean;
+}
+
+/**
+ * Groups the open tabs by project.
+ *
+ * Day 2: *"I see only one project at a time, and it feels clunky to set up."*
+ *
+ * Derived rather than stored. A project is the set of tabs sharing a working directory,
+ * so nothing new is persisted, there is no migration to go wrong, and `parseLayout` has
+ * nothing extra to repair. Opening a project stays what it already was — a tab with a
+ * `cwd` — and the grouping falls out of that.
+ */
+export function projectsOf(layout: LayoutState): ProjectView[] {
+  const order: string[] = [];
+  const found = new Map<string, { path?: string; name: string; tabIds: string[] }>();
+
+  for (const tab of layout.tabs) {
+    const cwd = paneCwd(tab);
+    // Windows hands back the same directory spelled several ways — mixed slashes from a
+    // picker, mixed case from a shell. One project, however it was written.
+    const key = cwd === undefined ? "" : cwd.replace(/[\\/]+/g, "/").replace(/\/$/, "").toLowerCase();
+    if (!found.has(key)) {
+      order.push(key);
+      found.set(key, {
+        ...(cwd === undefined ? {} : { path: cwd }),
+        name: cwd === undefined ? "Home" : projectFromCwd(cwd),
+        tabIds: []
+      });
+    }
+    found.get(key)?.tabIds.push(tab.id);
+  }
+
+  return order.map((key) => {
+    const entry = found.get(key)!;
+    return {
+      ...(entry.path === undefined ? {} : { path: entry.path }),
+      name: entry.name,
+      tabIds: entry.tabIds,
+      active: layout.activeTabId !== null && entry.tabIds.includes(layout.activeTabId)
+    };
+  });
+}
+
 export function activeCwd(layout: LayoutState): string | undefined {
   const tab = layout.tabs.find((candidate) => candidate.id === layout.activeTabId);
   return tab === undefined ? undefined : paneCwd(tab);

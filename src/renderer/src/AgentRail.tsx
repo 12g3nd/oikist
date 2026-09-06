@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 
 import type { AgentSummary } from "../../shared/agents.js";
 import type { AgentsSnapshot } from "../../shared/ipc.js";
+import type { ProjectView } from "../../shared/layout.js";
+import { IconPlus } from "./Icon.js";
 
 const GLYPH: Record<AgentSummary["activity"], string> = {
   needsPermission: "!",
@@ -41,7 +43,24 @@ function age(startedAt: number): string {
  * own state, one merely found running does not — because a status panel that presents
  * a guess as a fact stops being believed the first time it is wrong.
  */
-export function AgentRail(): React.JSX.Element {
+/** How many discovered agents are running inside a project's directory. */
+function agentsIn(agents: readonly AgentSummary[], path?: string): number {
+  if (path === undefined) {
+    return 0;
+  }
+  const key = path.replace(/[\/]+/g, "/").toLowerCase();
+  return agents.filter((agent) => agent.cwd !== undefined && agent.cwd.replace(/[\/]+/g, "/").toLowerCase() === key).length;
+}
+
+interface AgentRailProps {
+  readonly projects: readonly ProjectView[];
+  /** Moves to a project by activating its first tab. */
+  readonly onOpenProject: (tabId: string) => void;
+  /** Opens the picker. Projects live here now, so opening one starts here too. */
+  readonly onAddProject: () => void;
+}
+
+export function AgentRail({ projects, onOpenProject, onAddProject }: AgentRailProps): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<AgentsSnapshot | null>(null);
 
   useEffect(() => {
@@ -69,9 +88,51 @@ export function AgentRail(): React.JSX.Element {
 
   return (
     <aside className="rail" aria-label="Agents">
+      {projects.length > 0 && (
+        <>
+          <div className="rail-head">
+            <span className="rail-label">Projects</span>
+            <button
+              className="rail-add"
+              type="button"
+              title="Open another project"
+              aria-label="Open another project"
+              onClick={onAddProject}
+            >
+              <IconPlus />
+            </button>
+          </div>
+          {/*
+            Day 2: "I see only one project at a time." Every open project is listed, with
+            what each is running, and one click moves to it. A project is derived from the
+            tabs rather than stored, so this is a view of what is already open.
+          */}
+          <ul className="project-list">
+            {projects.map((project) => (
+              <li key={project.path ?? "~"}>
+                <button
+                  type="button"
+                  className={`project${project.active ? " project--active" : ""}`}
+                  title={project.path ?? "Tabs opened without a project"}
+                  onClick={() => onOpenProject(project.tabIds[0]!)}
+                >
+                  <span className="project-name">{project.name}</span>
+                  <span className="project-count">
+                    {project.tabIds.length}
+                    {agentsIn(agents, project.path) > 0 && (
+                      <em className="project-agents">{agentsIn(agents, project.path)}</em>
+                    )}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
       <div className="rail-head">
         <span className="rail-label">Agents</span>
-        <span className="rail-count">{snapshot === null ? "" : `// ${agents.length}`}</span>
+        <span className="rail-count">{snapshot === null ? "" : agents.length}</span>
       </div>
 
       {snapshot !== null && !snapshot.ok && (

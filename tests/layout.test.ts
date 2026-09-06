@@ -9,6 +9,7 @@ import {
   parseLayout,
   closePane,
   layoutRects,
+  projectsOf,
   setActivePane,
   setRatio,
   splitPane,
@@ -729,4 +730,56 @@ test("a divider knows the span it divides", () => {
   assert.equal(dividers[0]?.span, 100, "the root divides the whole width");
   assert.equal(dividers[1]?.origin, 50, "the nested one starts halfway across");
   assert.equal(dividers[1]?.span, 50, "and divides only its own half");
+});
+
+
+/*
+ * Projects, day 2 finding 4: "I see only one project at a time, and it feels clunky to
+ * set up."
+ *
+ * Derived from the tabs rather than stored. A project is just the set of tabs sharing a
+ * working directory, so nothing new is persisted, no migration exists to go wrong, and
+ * parseLayout has nothing extra to repair.
+ */
+test("tabs sharing a directory are one project", () => {
+  const next = ids("p");
+  let layout = defaultLayout(next, "C:/work/alpha");
+  layout = createTab(layout, next, "claude", "C:/work/alpha");
+  layout = createTab(layout, next, "shell", "C:/work/beta");
+
+  const projects = projectsOf(layout);
+  assert.equal(projects.length, 2);
+  assert.equal(projects[0]?.name, "alpha");
+  assert.equal(projects[0]?.tabIds.length, 2, "both alpha tabs");
+  assert.equal(projects[1]?.name, "beta");
+});
+
+test("tabs with no directory collect under one home project", () => {
+  const next = ids("p");
+  let layout = defaultLayout(next);
+  layout = createTab(layout, next);
+  const projects = projectsOf(layout);
+  assert.equal(projects.length, 1);
+  assert.equal(projects[0]?.path, undefined, "home has no path");
+  assert.equal(projects[0]?.tabIds.length, 2);
+});
+
+test("a project knows whether the active tab is inside it", () => {
+  const next = ids("p");
+  let layout = defaultLayout(next, "C:/work/alpha");
+  layout = createTab(layout, next, "shell", "C:/work/beta");
+
+  const projects = projectsOf(layout);
+  const beta = projects.find((project) => project.name === "beta");
+  const alpha = projects.find((project) => project.name === "alpha");
+  assert.equal(beta?.active, true, "the newest tab took focus");
+  assert.equal(alpha?.active, false);
+});
+
+/** Windows paths differing only by slash or case are the same project. */
+test("a project is not duplicated by path spelling", () => {
+  const next = ids("p");
+  let layout = defaultLayout(next, "C:/work/alpha");
+  layout = createTab(layout, next, "claude", "C:\\work\\Alpha");
+  assert.equal(projectsOf(layout).length, 1, "one project, spelled two ways");
 });

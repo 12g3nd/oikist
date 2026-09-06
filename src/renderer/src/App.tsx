@@ -9,6 +9,7 @@ import {
   parseLayout,
   setActivePane,
   setActiveTab,
+  projectsOf,
   setPanePath,
   setPaneSession,
   setRatio,
@@ -260,7 +261,11 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="shell">
-      <AgentRail />
+      <AgentRail
+        projects={projectsOf(layout)}
+        onOpenProject={(tabId) => apply((current) => setActiveTab(current, tabId))}
+        onAddProject={openProject}
+      />
 
       <main className="main">
         <div className="tabbar">
