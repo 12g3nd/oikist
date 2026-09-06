@@ -217,7 +217,7 @@ export function App(): React.JSX.Element {
             onClick={() => apply((current) => createTab(current, newId, "claude"))}
             title="New Claude agent — launched by oikist, so it reports its own state"
           >
-            + CLAUDE
+            + Claude
           </button>
           <button
             className="tabbar-action tabbar-action--agent"
@@ -225,7 +225,7 @@ export function App(): React.JSX.Element {
             onClick={() => apply((current) => createTab(current, newId, "codex"))}
             title="New Codex session — oikist starts it, but Codex publishes no live state for it on Windows"
           >
-            + CODEX
+            + Codex
           </button>
           <button
             className="tabbar-action tabbar-action--files"
@@ -233,7 +233,7 @@ export function App(): React.JSX.Element {
             onClick={() => apply((current) => createTab(current, newId, "files"))}
             title="Read files — read-only"
           >
-            + FILES
+            + Files
           </button>
           <button
             className="tabbar-action tabbar-action--files"
@@ -241,7 +241,7 @@ export function App(): React.JSX.Element {
             onClick={() => apply((current) => createTab(current, newId, "handoff"))}
             title="Move a task between providers"
           >
-            + HANDOFF
+            + Handoff
           </button>
           </div>
         </div>
@@ -325,7 +325,7 @@ function DormantAgent({ pane, onResume }: { pane: PaneState; onResume: () => voi
         </p>
       )}
       <button className="dormant-action" type="button" onClick={onResume}>
-        {resumable ? "RESUME SESSION" : "START AGENT"}
+        {resumable ? "Resume session" : "Start agent"}
       </button>
       {resumable && <code className="dormant-id">{pane.sessionId?.slice(0, 8)}</code>}
     </div>

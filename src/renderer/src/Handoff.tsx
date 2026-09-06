@@ -73,7 +73,7 @@ export function Handoff({ cwd, onCwdChange }: HandoffProps): React.JSX.Element {
   return (
     <div className="handoff">
       <section className="handoff-limits">
-        <span className="handoff-label">WHAT IS LEFT</span>
+        <span className="handoff-label">What is left</span>
         <ul className="limit-list">
           {limits === null && <li className="handoff-note">Asking each provider…</li>}
           {limits?.map((limit) => (
@@ -124,7 +124,7 @@ export function Handoff({ cwd, onCwdChange }: HandoffProps): React.JSX.Element {
       </div>
 
       <label className="handoff-field">
-        <span className="handoff-label">TASK</span>
+        <span className="handoff-label">Task</span>
         <textarea
           rows={2}
           value={task}
@@ -134,7 +134,7 @@ export function Handoff({ cwd, onCwdChange }: HandoffProps): React.JSX.Element {
       </label>
 
       <label className="handoff-field">
-        <span className="handoff-label">WHERE I GOT TO</span>
+        <span className="handoff-label">Where I got to</span>
         <textarea
           rows={5}
           value={note}
@@ -155,7 +155,7 @@ export function Handoff({ cwd, onCwdChange }: HandoffProps): React.JSX.Element {
             });
           }}
         >
-          {copied ? "COPIED" : "COPY HANDOFF"}
+          {copied ? "Copied" : "Copy handoff"}
         </button>
         {problem !== null && <span className="handoff-problem">{problem}</span>}
       </div>

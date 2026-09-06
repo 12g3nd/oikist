@@ -72,7 +72,7 @@ body {
 .rail-label {
   color: var(--accent);
   font-size: 10px;
-  letter-spacing: 0.16em;
+  letter-spacing: 0;
 }
 
 .rail-count {
@@ -95,7 +95,7 @@ body {
   background: #1b1513;
   color: var(--danger);
   font-size: 9px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
 }
 
 .agent-list {
@@ -127,7 +127,7 @@ body {
 
 .agent-provider {
   font-size: 10px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.04em;
   color: var(--fg-dim);
 }
 
@@ -151,7 +151,7 @@ body {
   gap: 2px 8px;
   margin-top: 1px;
   font-size: 9px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   color: var(--fg-dim);
 }
 
@@ -165,7 +165,7 @@ body {
   margin-top: 2px;
   font-size: 10px;
   color: var(--accent);
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
 }
 
 .agent-branch { opacity: 0.8; }
@@ -308,7 +308,7 @@ body {
 
 .tabbar-action--files {
   font-size: 10px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
 }
 
 /*
@@ -354,7 +354,7 @@ body {
 .tabbar-action--agent {
   margin-left: 12px;
   font-size: 10px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   color: var(--accent);
 }
 .tabbar-action:disabled { opacity: 0.3; cursor: default; }
@@ -421,7 +421,7 @@ body {
   color: inherit;
   font: inherit;
   font-size: 10px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   padding: 2px 8px;
   cursor: pointer;
 }
@@ -450,7 +450,7 @@ body {
 .dormant-provider {
   color: var(--fg-dim);
   font-size: 10px;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.04em;
 }
 
 .dormant-note {
@@ -467,7 +467,7 @@ body {
   color: var(--accent);
   font: inherit;
   font-size: 11px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   cursor: pointer;
 }
 
@@ -541,7 +541,7 @@ body {
   color: var(--fg-dim);
   font: inherit;
   font-size: 10px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   padding: 1px 8px;
   cursor: pointer;
   white-space: nowrap;
@@ -667,7 +667,7 @@ body {
 .handoff-label {
   color: var(--fg-dim);
   font-size: 10px;
-  letter-spacing: 0.16em;
+  letter-spacing: 0;
 }
 
 .handoff-note { color: var(--fg-dim); font-size: 11px; }
@@ -688,7 +688,7 @@ body {
   font-size: 11px;
 }
 
-.limit-provider { color: var(--fg); letter-spacing: 0.12em; min-width: 62px; }
+.limit-provider { color: var(--fg); letter-spacing: 0.04em; min-width: 62px; }
 .limit-windows { display: flex; gap: 14px; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
 .limit-hot { color: var(--danger); }
 
@@ -741,7 +741,7 @@ body {
   color: var(--accent);
   font: inherit;
   font-size: 11px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   cursor: pointer;
 }
 

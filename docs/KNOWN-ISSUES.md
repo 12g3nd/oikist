@@ -1,6 +1,31 @@
 # Known issues
 
-None open.
+### The pty batching assertion is intermittently flaky in the full suite
+
+**Found 2026-09-05, during the step 1 look pass.** `tests/pty.test.ts` — *"output is
+batched, so a burst is not one IPC message per read"* — failed once inside `npm run
+verify`:
+
+```
+expected batching to collapse 62025 bytes into few messages, got 121
+```
+
+It then passed 7/7 three times in isolation and 135/135 twice in the full suite. So it is
+**intermittent, not deterministic under load**, and it was not caused by the change in
+front of it: `git status` showed only `app.css` and three `.tsx` files modified, neither
+`src/main/pty.ts` nor the test among them.
+
+**Not fixed, deliberately.** The obvious move is to loosen the threshold, and that is
+exactly the mistake this file already records at M3 — writing a fix before an experiment
+has named the cause. The assertion is a *threshold on a coalescing behaviour that is
+load-sensitive by design*: this repo's own finding is that node-pty and ConPTY coalesce
+into larger reads when the consumer is not draining instantly, so a busy machine changes
+the read size and therefore the message count. A threshold like that will fail again.
+
+What would settle it: record the actual message count across ~20 full-suite runs, and
+either set the bound from the observed distribution or assert on a property that does not
+depend on scheduling (bytes per message, say, rather than messages per burst). Worth doing
+before it wastes a debugging session on a real defect that looks like this one.
 
 ---
 

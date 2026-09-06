@@ -12,11 +12,11 @@ const GLYPH: Record<AgentSummary["activity"], string> = {
 };
 
 const ACTIVITY_LABEL: Record<AgentSummary["activity"], string> = {
-  needsPermission: "NEEDS PERMISSION",
-  waitingForInput: "WAITING",
-  working: "WORKING",
-  idle: "IDLE",
-  unknown: "STATE UNKNOWN"
+  needsPermission: "Needs permission",
+  waitingForInput: "Waiting",
+  working: "Working",
+  idle: "Idle",
+  unknown: "State unknown"
 };
 
 function age(startedAt: number): string {
@@ -70,7 +70,7 @@ export function AgentRail(): React.JSX.Element {
   return (
     <aside className="rail" aria-label="Agents">
       <div className="rail-head">
-        <span className="rail-label">AGENTS</span>
+        <span className="rail-label">Agents</span>
         <span className="rail-count">{snapshot === null ? "" : `// ${agents.length}`}</span>
       </div>
 
