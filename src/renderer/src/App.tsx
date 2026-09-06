@@ -28,6 +28,16 @@ import { FileViewer } from "./FileViewer.js";
 import { Handoff } from "./Handoff.js";
 import { AgentSessionPane } from "./AgentSession.js";
 import { TerminalPane } from "./Terminal.js";
+import {
+  IconClose,
+  IconFolder,
+  IconMaximize,
+  IconPanes,
+  IconPlus,
+  IconRestore,
+  IconSplitDown,
+  IconSplitRight
+} from "./Icon.js";
 
 const newId = (): string => crypto.randomUUID();
 
@@ -41,21 +51,29 @@ function rectsFor(tab: TabState): ReturnType<typeof layoutRects> {
   return layoutRects(tab.arrangement);
 }
 
+/**
+ * Half the space between two panes.
+ *
+ * `gap` does nothing here: the panes are absolutely positioned, so the container's gap
+ * never reaches them and they abut. Each pane is inset by this much instead, which is
+ * what lets a tiled layout read as several objects rather than one block with lines
+ * drawn through it.
+ */
+const GUTTER = 3;
+
 function boxFor(tab: TabState, paneId: string): React.CSSProperties {
   // A maximised pane takes the whole tab; the others stay mounted and hidden, so their
   // shells keep running and their agents are never torn down.
-  if (tab.maximizedPaneId === paneId) {
-    return { left: "0%", top: "0%", width: "100%", height: "100%" };
-  }
-  const rect = rectsFor(tab).panes.find((candidate) => candidate.paneId === paneId);
-  if (rect === undefined) {
-    return { left: "0%", top: "0%", width: "100%", height: "100%" };
+  const full = tab.maximizedPaneId === paneId;
+  const rect = full ? undefined : rectsFor(tab).panes.find((candidate) => candidate.paneId === paneId);
+  if (full || rect === undefined) {
+    return { left: "0", top: "0", width: "100%", height: "100%" };
   }
   return {
-    left: `${rect.left}%`,
-    top: `${rect.top}%`,
-    width: `${rect.width}%`,
-    height: `${rect.height}%`
+    left: `calc(${rect.left}% + ${GUTTER}px)`,
+    top: `calc(${rect.top}% + ${GUTTER}px)`,
+    width: `calc(${rect.width}% - ${GUTTER * 2}px)`,
+    height: `calc(${rect.height}% - ${GUTTER * 2}px)`
   };
 }
 
@@ -272,7 +290,8 @@ export function App(): React.JSX.Element {
               <span className="tab-title">{tab.title}</span>
               {tab.panes.length > 1 && (
                 <span className="tab-split" title={`${tab.panes.length} panes`}>
-                  ◫ {tab.panes.length}
+                  <IconPanes />
+                  {tab.panes.length}
                 </span>
               )}
               <button
@@ -284,7 +303,7 @@ export function App(): React.JSX.Element {
                   apply((current) => closeTab(current, tab.id, newId));
                 }}
               >
-                ×
+                <IconClose />
               </button>
             </div>
           ))}
@@ -301,6 +320,7 @@ export function App(): React.JSX.Element {
             onClick={openProject}
             title={`${here ?? "Home directory"} — click to open another project in a new tab`}
           >
+            <IconFolder />
             <span className="tabbar-cwd-label">{here === undefined ? "~" : leafOf(here)}</span>
           </button>
 
@@ -310,7 +330,7 @@ export function App(): React.JSX.Element {
             onClick={() => apply((current) => createTab(current, newId))}
             title="New tab — Ctrl+Shift+T"
           >
-            +
+            <IconPlus />
           </button>
           <button
             className="tabbar-action"
@@ -318,7 +338,7 @@ export function App(): React.JSX.Element {
             title={activeTab.maximizedPaneId === undefined ? "Maximise this pane — Ctrl+Shift+M" : "Restore the arrangement — Ctrl+Shift+M"}
             onClick={() => apply((current) => toggleMaximized(current, activeTab.id, activeTab.activePaneId))}
           >
-            {activeTab.maximizedPaneId === undefined ? "⛶" : "⛝"}
+            {activeTab.maximizedPaneId === undefined ? <IconMaximize /> : <IconRestore />}
           </button>
           <button
             className="tabbar-action"
@@ -329,16 +349,16 @@ export function App(): React.JSX.Element {
               apply((current) => splitPane(current, activeTab.id, activeTab.activePaneId, "column", newId))
             }
           >
-            ⬓
+            <IconSplitDown />
           </button>
           <button
             className="tabbar-action"
             type="button"
             disabled={activeTab.panes.length >= MAX_PANES_PER_TAB}
             onClick={() => apply((current) => splitTab(current, activeTab.id, newId))}
-            title="Split — Ctrl+Shift+E"
+            title="Split rightward — Ctrl+Shift+E"
           >
-            ◫
+            <IconSplitRight />
           </button>
           <button
             className="tabbar-action tabbar-action--agent"

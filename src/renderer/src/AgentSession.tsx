@@ -215,7 +215,7 @@ export function AgentSessionPane({
   }
 
   return (
-    <div className="agent">
+    <div className="agent-pane">
       <div className="agent-scroll">
         {state.turns.length === 0 && running && (
           <p className="agent-empty">
