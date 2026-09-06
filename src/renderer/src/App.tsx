@@ -11,6 +11,12 @@ import {
   setActiveTab,
   setPanePath,
   setPaneSession,
+  setRatio,
+  layoutRects,
+  splitPane,
+  toggleMaximized,
+  type DividerRect,
+  type TabState,
   splitTab,
   unsplitPane,
   wakePane,
@@ -24,6 +30,86 @@ import { AgentSessionPane } from "./AgentSession.js";
 import { TerminalPane } from "./Terminal.js";
 
 const newId = (): string => crypto.randomUUID();
+
+/**
+ * Where each pane sits, as CSS percentages.
+ *
+ * Recomputed per render rather than memoised: the tree is a handful of nodes, and a stale
+ * memo here would put a pane in the wrong place, which is far worse than the arithmetic.
+ */
+function rectsFor(tab: TabState): ReturnType<typeof layoutRects> {
+  return layoutRects(tab.arrangement);
+}
+
+function boxFor(tab: TabState, paneId: string): React.CSSProperties {
+  // A maximised pane takes the whole tab; the others stay mounted and hidden, so their
+  // shells keep running and their agents are never torn down.
+  if (tab.maximizedPaneId === paneId) {
+    return { left: "0%", top: "0%", width: "100%", height: "100%" };
+  }
+  const rect = rectsFor(tab).panes.find((candidate) => candidate.paneId === paneId);
+  if (rect === undefined) {
+    return { left: "0%", top: "0%", width: "100%", height: "100%" };
+  }
+  return {
+    left: `${rect.left}%`,
+    top: `${rect.top}%`,
+    width: `${rect.width}%`,
+    height: `${rect.height}%`
+  };
+}
+
+/**
+ * A draggable boundary between two panes.
+ *
+ * The ratio is computed against the *tab area* rather than the divider's own box, since
+ * the divider has no width in the axis it moves along.
+ */
+function Divider({
+  divider,
+  onDrag
+}: {
+  readonly divider: DividerRect;
+  readonly onDrag: (ratio: number) => void;
+}): React.JSX.Element {
+  const row = divider.direction === "row";
+  return (
+    <div
+      className={`divider divider--${divider.direction}`}
+      style={{
+        left: `${divider.left}%`,
+        top: `${divider.top}%`,
+        width: row ? undefined : `${divider.width}%`,
+        height: row ? `${divider.height}%` : undefined
+      }}
+      onMouseDown={(event) => {
+        event.preventDefault();
+        const host = event.currentTarget.parentElement;
+        if (host === null) {
+          return;
+        }
+        const bounds = host.getBoundingClientRect();
+        const axisOrigin = row ? bounds.left : bounds.top;
+        const axisSize = row ? bounds.width : bounds.height;
+
+        const move = (moveEvent: MouseEvent): void => {
+          const pointer = (row ? moveEvent.clientX : moveEvent.clientY) - axisOrigin;
+          // Percent of the tab, then rebased onto the split's own box: a nested divider
+          // divides only its parent's share, so measuring against the tab makes it jump.
+          const percentOfTab = (pointer / axisSize) * 100;
+          onDrag((percentOfTab - divider.origin) / divider.span);
+        };
+        const up = (): void => {
+          window.removeEventListener("mousemove", move);
+          window.removeEventListener("mouseup", up);
+        };
+        window.addEventListener("mousemove", move);
+        window.addEventListener("mouseup", up);
+      }}
+    />
+  );
+}
+
 
 /** The trailing directory name — the part a person uses to say which project. */
 function leafOf(path: string): string {
@@ -113,6 +199,16 @@ export function App(): React.JSX.Element {
         apply((current) => createTab(current, newId));
       } else if (key === "e" && tabId !== null) {
         apply((current) => splitTab(current, tabId, newId));
+      } else if (key === "d" && tabId !== null) {
+        apply((current) => {
+          const tab = current.tabs.find((candidate) => candidate.id === tabId);
+          return tab === undefined ? current : splitPane(current, tabId, tab.activePaneId, "column", newId);
+        });
+      } else if (key === "m" && tabId !== null) {
+        apply((current) => {
+          const tab = current.tabs.find((candidate) => candidate.id === tabId);
+          return tab === undefined ? current : toggleMaximized(current, tabId, tab.activePaneId);
+        });
       } else if (key === "w" && tabId !== null) {
         apply((current) => {
           const tab = current.tabs.find((candidate) => candidate.id === tabId);
@@ -174,7 +270,11 @@ export function App(): React.JSX.Element {
               }}
             >
               <span className="tab-title">{tab.title}</span>
-              {tab.panes.length > 1 && <span className="tab-split" title="split">◫</span>}
+              {tab.panes.length > 1 && (
+                <span className="tab-split" title={`${tab.panes.length} panes`}>
+                  ◫ {tab.panes.length}
+                </span>
+              )}
               <button
                 className="tab-close"
                 type="button"
@@ -211,6 +311,25 @@ export function App(): React.JSX.Element {
             title="New tab — Ctrl+Shift+T"
           >
             +
+          </button>
+          <button
+            className="tabbar-action"
+            type="button"
+            title={activeTab.maximizedPaneId === undefined ? "Maximise this pane — Ctrl+Shift+M" : "Restore the arrangement — Ctrl+Shift+M"}
+            onClick={() => apply((current) => toggleMaximized(current, activeTab.id, activeTab.activePaneId))}
+          >
+            {activeTab.maximizedPaneId === undefined ? "⛶" : "⛝"}
+          </button>
+          <button
+            className="tabbar-action"
+            type="button"
+            title="Split downward — Ctrl+Shift+D"
+            disabled={activeTab.panes.length >= MAX_PANES_PER_TAB}
+            onClick={() =>
+              apply((current) => splitPane(current, activeTab.id, activeTab.activePaneId, "column", newId))
+            }
+          >
+            ⬓
           </button>
           <button
             className="tabbar-action"
@@ -264,13 +383,28 @@ export function App(): React.JSX.Element {
         {layout.tabs.map((tab) => (
           <div
             key={tab.id}
-            className={`panes${tab.panes.length > 1 ? " panes--split" : ""}`}
+            className="panes"
             hidden={tab.id !== activeTab.id}
           >
+            {/*
+              Panes are rendered flat and positioned absolutely, never nested.
+              Nesting them would move a pane in the React tree on every split, and React
+              reconciles by position -- a moved pane is a remounted pane, which for an
+              agent means a torn-down session. See docs/PHASE-3-tiling.md.
+            */}
+            {rectsFor(tab).dividers.map((divider, index) => (
+              <Divider
+                key={index}
+                divider={divider}
+                onDrag={(ratio) => apply((current) => setRatio(current, tab.id, divider.path, ratio))}
+              />
+            ))}
             {tab.panes.map((pane) => (
               <div
                 key={pane.id}
                 className={`pane${pane.id === tab.activePaneId && tab.panes.length > 1 ? " pane--focused" : ""}`}
+                style={boxFor(tab, pane.id)}
+                hidden={tab.maximizedPaneId !== undefined && tab.maximizedPaneId !== pane.id}
                 onFocusCapture={() => apply((current) => setActivePane(current, tab.id, pane.id))}
                 onMouseDown={() => apply((current) => setActivePane(current, tab.id, pane.id))}
               >

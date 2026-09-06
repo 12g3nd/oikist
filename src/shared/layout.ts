@@ -105,6 +105,95 @@ function clampRatio(value: unknown): number {
   return Math.min(MAX_RATIO, Math.max(MIN_RATIO, ratio));
 }
 
+
+/** A pane's box, in percentages of the tab area. */
+export interface PaneRect {
+  readonly paneId: string;
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** A draggable boundary, addressed by the path of the split it belongs to. */
+export interface DividerRect {
+  readonly path: ArrangementPath;
+  readonly direction: "row" | "column";
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+  /**
+   * Where the split this divider belongs to begins and how far it runs, along the axis
+   * being dragged.
+   *
+   * A nested split occupies part of the tab, so its ratio has to be measured against its
+   * own box. Measuring against the whole tab makes a divider inside a split jump.
+   */
+  readonly origin: number;
+  readonly span: number;
+}
+
+/**
+ * Turns the tree into flat boxes.
+ *
+ * This exists so the DOM never nests. Rendering the tree as nested elements would move a
+ * pane to a new position in the React tree every time something split, and React
+ * reconciles by position — a moved pane is a remounted pane, and a remounted agent pane
+ * tears down a running session, spends quota and loses the conversation.
+ *
+ * Panes are therefore rendered as one flat list and positioned absolutely from these
+ * rectangles, so splitting changes styles and never structure. The trap is removed by
+ * construction rather than by remembering to avoid it.
+ */
+export function layoutRects(root: Arrangement): {
+  panes: PaneRect[];
+  dividers: DividerRect[];
+} {
+  const panes: PaneRect[] = [];
+  const dividers: DividerRect[] = [];
+
+  const walk = (
+    node: Arrangement,
+    path: ArrangementPath,
+    left: number,
+    top: number,
+    width: number,
+    height: number
+  ): void => {
+    if (node.kind === "leaf") {
+      panes.push({ paneId: node.paneId, left, top, width, height });
+      return;
+    }
+    const row = node.direction === "row";
+    const firstSpan = (row ? width : height) * node.ratio;
+
+    dividers.push({
+      path,
+      direction: node.direction,
+      left: row ? left + firstSpan : left,
+      top: row ? top : top + firstSpan,
+      width: row ? 0 : width,
+      height: row ? height : 0,
+      origin: row ? left : top,
+      span: row ? width : height
+    });
+
+    walk(node.children[0], [...path, 0], left, top, row ? firstSpan : width, row ? height : firstSpan);
+    walk(
+      node.children[1],
+      [...path, 1],
+      row ? left + firstSpan : left,
+      row ? top : top + firstSpan,
+      row ? width - firstSpan : width,
+      row ? height : height - firstSpan
+    );
+  };
+
+  walk(root, [], 0, 0, 100, 100);
+  return { panes, dividers };
+}
+
 /** Every pane id the tree mentions, in visual order. */
 export function arrangementPanes(node: Arrangement): string[] {
   return node.kind === "leaf"

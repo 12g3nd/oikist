@@ -8,6 +8,7 @@ import {
   defaultLayout,
   parseLayout,
   closePane,
+  layoutRects,
   setActivePane,
   setRatio,
   splitPane,
@@ -627,4 +628,105 @@ test("a pane missing from the arrangement is appended rather than orphaned", () 
   const tab = layout.tabs[0]!;
   assert.equal(tab.panes.length, 2, "the pane survives");
   assert.equal(tab.arrangement.kind, "split", "and becomes visible");
+});
+
+
+/*
+ * Geometry, so the DOM never nests.
+ *
+ * Rendering the tree as nested elements would move a pane to a new position in the React
+ * tree every time it split, remounting it — and a remounted agent pane tears down a live
+ * session. Panes are therefore rendered flat and absolutely positioned from these rects,
+ * so splitting changes styles and never structure.
+ */
+test("a single pane fills the tab", () => {
+  const { panes, dividers } = layoutRects({ kind: "leaf", paneId: "a" });
+  assert.deepEqual(panes, [{ paneId: "a", left: 0, top: 0, width: 100, height: 100 }]);
+  assert.equal(dividers.length, 0, "nothing to drag with one pane");
+});
+
+test("a row split puts panes side by side at the ratio", () => {
+  const { panes } = layoutRects({
+    kind: "split",
+    direction: "row",
+    ratio: 0.25,
+    children: [{ kind: "leaf", paneId: "a" }, { kind: "leaf", paneId: "b" }]
+  });
+  assert.deepEqual(panes[0], { paneId: "a", left: 0, top: 0, width: 25, height: 100 });
+  assert.deepEqual(panes[1], { paneId: "b", left: 25, top: 0, width: 75, height: 100 });
+});
+
+test("a column split stacks them", () => {
+  const { panes } = layoutRects({
+    kind: "split",
+    direction: "column",
+    ratio: 0.5,
+    children: [{ kind: "leaf", paneId: "a" }, { kind: "leaf", paneId: "b" }]
+  });
+  assert.deepEqual(panes[0], { paneId: "a", left: 0, top: 0, width: 100, height: 50 });
+  assert.deepEqual(panes[1], { paneId: "b", left: 0, top: 50, width: 100, height: 50 });
+});
+
+test("nesting subdivides only the child it belongs to", () => {
+  const { panes } = layoutRects({
+    kind: "split",
+    direction: "row",
+    ratio: 0.5,
+    children: [
+      { kind: "leaf", paneId: "a" },
+      {
+        kind: "split",
+        direction: "column",
+        ratio: 0.5,
+        children: [{ kind: "leaf", paneId: "b" }, { kind: "leaf", paneId: "c" }]
+      }
+    ]
+  });
+  assert.deepEqual(panes[0], { paneId: "a", left: 0, top: 0, width: 50, height: 100 });
+  assert.deepEqual(panes[1], { paneId: "b", left: 50, top: 0, width: 50, height: 50 });
+  assert.deepEqual(panes[2], { paneId: "c", left: 50, top: 50, width: 50, height: 50 });
+});
+
+test("every split yields one divider, addressed by its path", () => {
+  const { dividers } = layoutRects({
+    kind: "split",
+    direction: "row",
+    ratio: 0.5,
+    children: [
+      { kind: "leaf", paneId: "a" },
+      {
+        kind: "split",
+        direction: "column",
+        ratio: 0.5,
+        children: [{ kind: "leaf", paneId: "b" }, { kind: "leaf", paneId: "c" }]
+      }
+    ]
+  });
+  assert.equal(dividers.length, 2);
+  assert.deepEqual(dividers[0]?.path, [], "the root split");
+  assert.deepEqual(dividers[1]?.path, [1], "the split inside the right child");
+  assert.equal(dividers[1]?.direction, "column");
+});
+
+
+/** A nested divider must measure against its own split, not the whole tab. */
+test("a divider knows the span it divides", () => {
+  const { dividers } = layoutRects({
+    kind: "split",
+    direction: "row",
+    ratio: 0.5,
+    children: [
+      { kind: "leaf", paneId: "a" },
+      {
+        kind: "split",
+        direction: "row",
+        ratio: 0.5,
+        children: [{ kind: "leaf", paneId: "b" }, { kind: "leaf", paneId: "c" }]
+      }
+    ]
+  });
+  assert.equal(dividers[0]?.origin, 0);
+  assert.equal(dividers[0]?.span, 100, "the root divides the whole width");
+  assert.equal(dividers[1]?.origin, 50, "the nested one starts halfway across");
+  assert.equal(dividers[1]?.span, 50, "and divides only its own half");
 });

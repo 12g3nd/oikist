@@ -103,3 +103,45 @@ process count is unchanged, rather than by reading the code.
 - A corrupt arrangement costs the arrangement and nothing else.
 - **Splitting a running agent does not restart it**, verified by process count.
 - `npm run verify` green; the app still exits.
+
+---
+
+## Result — 2026-09-06
+
+Tasks 1-5 done. 162/162, typecheck clean.
+
+**The renderer does not nest, which is how the remount trap was removed.** Rather than
+walking the tree into nested elements,  turns it into flat rectangles and the
+panes are rendered as one list, absolutely positioned. Splitting changes styles and never
+DOM structure, so a pane cannot move in the React tree and cannot be remounted. The trap
+is gone by construction rather than by remembering to avoid it.
+
+**Verified by measurement, and the first measurement was invalid.** Counting 
+processes before and after the run showed 14 and 14 — meaningless, because the app quits
+after the capture and disposes its sessions, so "after" was sampled once the agent was
+already dead. Sampling *during* the run gave 15 / 15 / 16, and the 16 was noise: this
+machine runs Claude Code, so the process count drifts on its own.
+
+What settled it was **identity rather than count**. The pane started PID 30548, and 30548
+was still alive after the split:
+
+
+
+A restart would have killed that pid and made a new one. Immune to background noise, and
+the third time in this project that a count was believed before the instrument was.
+
+### Two things added along the way
+
+** takes a sequence**, separated by , with  between
+steps. Proving a split does not restart an agent needs two actions and the affordance
+only did one.
+
+**Panes have edges.** Absolutely positioned panes abut with no seam, which is day 2's
+"too flat" in miniature. A border and radius per pane, accent on the focused one — most
+of what makes a tiled layout legible is being able to see where a pane ends.
+
+### Still open
+
+- The agent pane's transcript is cramped in a short pane: the composer keeps its height
+  while the scroll area collapses. Visible in the capture, and a step 3 concern.
+- Dividers are invisible until hovered. Deliberate for now; revisit with step 3's look.

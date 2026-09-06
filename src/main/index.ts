@@ -79,10 +79,20 @@ async function captureIfRequested(window: BrowserWindow): Promise<void> {
     // happens, which is how the terminal pane got declared working while blank.
     const clickSelector = process.env.OIKIST_CLICK;
     if (clickSelector !== undefined && clickSelector !== "") {
-      const clicked: unknown = await window.webContents.executeJavaScript(
-        `(() => { const el = document.querySelector(${JSON.stringify(clickSelector)}); if (el instanceof HTMLElement) { el.click(); return true; } return false; })()`
-      );
-      console.log(`[click] ${clickSelector} -> ${clicked === true ? "clicked" : "NO MATCH"}`);
+      // Several selectors, separated by ";;", are clicked in order with a pause between.
+      // Verifying that a split does not restart an agent needs two actions, not one.
+      const steps = clickSelector.split(";;").map((step) => step.trim()).filter((step) => step !== "");
+      let clicked: unknown = false;
+      for (const step of steps) {
+        clicked = await window.webContents.executeJavaScript(
+          `(() => { const el = document.querySelector(${JSON.stringify(step)}); if (el instanceof HTMLElement) { el.click(); return true; } return false; })()`
+        );
+        console.log(`[click] ${step} -> ${clicked === true ? "clicked" : "NO MATCH"}`);
+        if (steps.length > 1) {
+          const between = Number(process.env.OIKIST_CLICK_GAP ?? "4000");
+          await new Promise((resolve) => setTimeout(resolve, Number.isFinite(between) ? between : 4000));
+        }
+      }
       // Separate from the pre-click delay: what the click starts may take far longer to
       // become visible than the page took to render in the first place — an agent
       // booting, for instance.

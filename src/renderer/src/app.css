@@ -382,7 +382,7 @@ body {
   border-left: 2px solid transparent;
 }
 
-.pane--focused { border-left-color: var(--accent); }
+
 
 .term-wrap {
   display: flex;
@@ -1024,3 +1024,62 @@ body {
 .statusline-thinking { color: var(--accent); }
 .statusline-subagents { color: var(--accent); }
 .statusline-usage { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/*
+ * Tiling.
+ *
+ * Panes are absolutely positioned from `layoutRects` rather than nested, so splitting
+ * changes styles and never DOM structure — a nested pane would be a remounted pane, and
+ * a remounted agent pane is a dead session.
+ */
+.panes {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--border);
+}
+
+/*
+ * A pane is an object, not a region.
+ *
+ * Day 2: "too flat... this looks like a concept." Absolutely positioned panes abut with
+ * no seam at all, so each one gets its own edge and inset. That is most of what makes a
+ * tiled layout legible -- you can see where one pane ends.
+ */
+.pane {
+  position: absolute;
+  min-width: 0;
+  min-height: 0;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.pane--focused {
+  border-color: var(--accent);
+}
+
+/* A hidden pane keeps running; it must take no space while it does. */
+.panes .pane[hidden] { display: none !important; }
+
+.divider {
+  position: absolute;
+  z-index: 2;
+  background: transparent;
+}
+
+.divider--row {
+  width: 9px;
+  margin-left: -4px;
+  cursor: col-resize;
+}
+
+.divider--column {
+  height: 9px;
+  margin-top: -4px;
+  cursor: row-resize;
+}
+
+.divider:hover { background: var(--accent); opacity: 0.35; }
