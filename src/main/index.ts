@@ -23,6 +23,7 @@ import { claudeLimits, readCodexLimits } from "./agents/limits.js";
 import { listDirectory, readTextFile } from "./files.js";
 import { PtyManager } from "./pty.js";
 import { AgentSessionManager } from "./agent-session.js";
+import { railActivity, type SessionLimits } from "../shared/session.js";
 
 /**
  * The renderer is served over `app://` rather than loaded from `file://`.
@@ -133,6 +134,16 @@ const ptyManagers = new Map<number, PtyManager>();
 
 /** The same, for native agent panes. Keyed identically, disposed on the same paths. */
 const sessionManagers = new Map<number, AgentSessionManager>();
+
+/**
+ * Claude's usage, as its own event stream reported it.
+ *
+ * Section 6 recorded that Claude publishes nothing readable, which is why the handoff
+ * view showed exact Codex numbers against a blank. A native session carries
+ * `rate_limit_event`, so the figure exists once an agent has run — and stays null, rather
+ * than being guessed at, until one has.
+ */
+let claudeStreamLimits: SessionLimits | null = null;
 
 /** Created once app paths are available, so `app.getPath` has a real answer. */
 let layoutStore: LayoutStore | null = null;
@@ -253,6 +264,16 @@ function createWindow(stored?: WindowBounds): BrowserWindow {
   ptyManagers.set(contentsId, manager);
 
   const sessions = AgentSessionManager.forWebContents(window.webContents);
+  sessions.onState((sessionId, provider, state) => {
+    // Claude has no usage command, which is why its handoff row read "unknown" — but a
+    // native session is told its own limits on the stream. Cached as they arrive.
+    if (provider === "claude" && state.limits !== null) {
+      claudeStreamLimits = state.limits;
+    }
+    if (launcher?.applySessionState(sessionId, railActivity(state.activity)) === true) {
+      publishAgents();
+    }
+  });
   sessionManagers.set(contentsId, sessions);
 
   window.on("closed", () => {
@@ -422,7 +443,7 @@ ipcMain.handle(IPC.handoffCopy, (_event, text: string) => {
   clipboard.writeText(typeof text === "string" ? text : "");
 });
 
-ipcMain.handle(IPC.providerLimits, async () => [claudeLimits(), await readCodexLimits()]);
+ipcMain.handle(IPC.providerLimits, async () => [claudeLimits(claudeStreamLimits), await readCodexLimits()]);
 
 // The viewer is read-only: there is no write, rename, or delete channel to reach for.
 ipcMain.handle(IPC.filesHome, () => app.getPath("home"));

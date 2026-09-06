@@ -268,6 +268,23 @@ export class AgentLauncher {
     return true;
   }
 
+  /**
+   * Updates a row from a native session's own reported state.
+   *
+   * This is the replacement for `applyHookEvent` on the stream-json path: the CLI
+   * publishes activity and subagent counts itself, so nothing has to be inferred from
+   * hook timing. Returns true when the rail actually changed, so a stream of events that
+   * says the same thing costs no re-render.
+   */
+  applySessionState(sessionId: string, activity: LaunchedAgent["activity"]): boolean {
+    const existing = this.#launched.get(sessionId);
+    if (existing === undefined || existing.activity === activity) {
+      return false;
+    }
+    this.#launched.set(sessionId, { ...existing, activity });
+    return true;
+  }
+
   /** Called when a pane closes, so a killed agent leaves the rail. */
   forget(sessionId: string): boolean {
     return this.#launched.delete(sessionId);

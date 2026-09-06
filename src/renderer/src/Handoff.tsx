@@ -12,6 +12,8 @@ interface HandoffProps {
   /** The repository whose working state travels with the handoff. */
   readonly cwd?: string;
   readonly onCwdChange: (cwd: string) => void;
+  /** Opens the receiving agent with the block already in its composer, unsent. */
+  readonly onOpenIn: (provider: HandoffProvider, text: string) => void;
 }
 
 const PROVIDERS: readonly HandoffProvider[] = ["claude", "codex"];
@@ -30,11 +32,15 @@ function resetLabel(resetsAt: number | null): string {
 /**
  * Moving a task between providers.
  *
- * The block is composed here and put on the clipboard rather than typed into the other
- * agent automatically. Pasting is where the person reads what is about to be sent, and
- * a handoff is exactly the kind of thing that should not happen without being read.
+ * Now that both agents live inside oikist, the clipboard round trip is unnecessary — but
+ * the *reading* it forced is not. `Open in` puts the block in the receiving agent's
+ * composer and stops: the human presses enter. That keeps the step where someone sees
+ * what is about to be sent, which is the whole point of a handoff, and stays inside the
+ * v1 fence's ban on unsupervised agent-to-agent messaging.
+ *
+ * Copy stays, for handing off to something that is not in this window.
  */
-export function Handoff({ cwd, onCwdChange }: HandoffProps): React.JSX.Element {
+export function Handoff({ cwd, onCwdChange, onOpenIn }: HandoffProps): React.JSX.Element {
   const [from, setFrom] = useState<HandoffProvider>("claude");
   const [to, setTo] = useState<HandoffProvider>("codex");
   const [task, setTask] = useState("");
@@ -156,6 +162,15 @@ export function Handoff({ cwd, onCwdChange }: HandoffProps): React.JSX.Element {
           }}
         >
           {copied ? "Copied" : "Copy handoff"}
+        </button>
+        <button
+          className="handoff-open"
+          type="button"
+          disabled={problem !== null || state === null}
+          onClick={() => onOpenIn(to, composed)}
+          title={`Open a ${to} pane with this block ready to send`}
+        >
+          Open in {to}
         </button>
         {problem !== null && <span className="handoff-problem">{problem}</span>}
       </div>

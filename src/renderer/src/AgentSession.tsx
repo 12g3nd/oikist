@@ -10,6 +10,9 @@ interface AgentSessionPaneProps {
   readonly cwd?: string;
   /** Resume this conversation rather than starting a new one. */
   readonly resumeSessionId?: string;
+  /** Text to open the composer with — a handoff block, unsent. Seeded once. */
+  readonly initialDraft?: string;
+  readonly onDraftConsumed?: () => void;
   /** Reports the session this pane ended up running, so it can be resumed later. */
   readonly onAgentSession?: (sessionId: string) => void;
   readonly onExit?: (exitCode: number) => void;
@@ -27,6 +30,8 @@ interface AgentSessionPaneProps {
 export function AgentSessionPane({
   provider,
   focused,
+  initialDraft,
+  onDraftConsumed,
   cwd,
   resumeSessionId,
   onAgentSession,
@@ -41,7 +46,7 @@ export function AgentSessionPane({
    * forever, which the first screenshot caught.
    */
   const [started, setStarted] = useState(false);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(initialDraft ?? "");
   const [attachments, setAttachments] = useState<readonly string[]>([]);
 
   const idRef = useRef<string | null>(null);
@@ -121,6 +126,21 @@ export function AgentSessionPane({
       composerRef.current?.focus();
     }
   }, [focused]);
+
+  /*
+   * The draft is seeded from initial state above; this only retires the parent's copy.
+   * Kept in a ref and out of any dependency array — a value that round-trips through the
+   * parent has re-run an effect and undone work three times in this codebase already.
+   */
+  const consumedRef = useRef(false);
+  const onDraftConsumedRef = useRef(onDraftConsumed);
+  onDraftConsumedRef.current = onDraftConsumed;
+  useEffect(() => {
+    if (!consumedRef.current && initialDraft !== undefined && initialDraft !== "") {
+      consumedRef.current = true;
+      onDraftConsumedRef.current?.();
+    }
+  }, [initialDraft]);
 
   useEffect(() => {
     tailRef.current?.scrollIntoView({ block: "end" });

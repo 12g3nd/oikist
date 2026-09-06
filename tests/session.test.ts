@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   appendUserTurn,
   emptySession,
+  railActivity,
   reduceCodex,
   reduceSession,
   splitLines,
@@ -336,4 +337,19 @@ test("a codex failure shows its message, not its JSON envelope", () => {
 test("a codex failure that is not JSON is shown as written", () => {
   const state = reduceCodex(emptySession(), codex({ type: "turn.failed", error: { message: "network unreachable" } }));
   assert.equal(state.statusDetail, "network unreachable");
+});
+
+/*
+ * The rail speaks the vocabulary hooks used to supply. A native session has to be
+ * translated into it, and the translation is where a status panel starts lying if it
+ * guesses — so `starting` stays `unknown` rather than becoming `idle`.
+ */
+test("session activity maps onto the rail's vocabulary", () => {
+  assert.equal(railActivity("starting"), "unknown");
+  assert.equal(railActivity("working"), "working");
+  assert.equal(railActivity("idle"), "idle");
+});
+
+test("needing the human is waiting for input, not a permission prompt", () => {
+  assert.equal(railActivity("needsAction"), "waitingForInput");
 });

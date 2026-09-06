@@ -979,3 +979,22 @@ body {
   border-left: 2px solid var(--border);
   padding-left: 8px;
 }
+
+/* Hands the block to the agent's composer rather than the clipboard. */
+.handoff-open {
+  background: none;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  padding: 4px 12px;
+}
+
+.handoff-open:disabled {
+  opacity: 0.4;
+  cursor: default;
+  border-color: var(--border);
+  color: var(--fg-dim);
+}

@@ -61,6 +61,13 @@ interface LiveSession {
 export class AgentSessionManager {
   readonly #sessions = new Map<string, LiveSession>();
   readonly #send: (channel: string, payload: unknown) => void;
+  /**
+   * Reports reduced state to whoever owns the rail and the limits cache.
+   *
+   * Kept as a callback rather than an import so this class stays testable without the
+   * launcher, and so the direction of dependency runs outward from the manager.
+   */
+  #onState: ((sessionId: string, provider: "claude" | "codex", state: SessionState) => void) | null = null;
 
   /**
    * `send` is injected rather than a WebContents captured directly, so the manager can
@@ -68,6 +75,10 @@ export class AgentSessionManager {
    */
   constructor(send: (channel: string, payload: unknown) => void) {
     this.#send = send;
+  }
+
+  onState(listener: (sessionId: string, provider: "claude" | "codex", state: SessionState) => void): void {
+    this.#onState = listener;
   }
 
   static forWebContents(contents: WebContents): AgentSessionManager {
@@ -276,5 +287,6 @@ export class AgentSessionManager {
   #publish(id: string, session: LiveSession, state: SessionState): void {
     session.state = state;
     this.#send(IPC.sessionEvent, { id, state });
+    this.#onState?.(session.sessionId, session.provider, state);
   }
 }

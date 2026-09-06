@@ -34,6 +34,15 @@ function leafOf(path: string): string {
 export function App(): React.JSX.Element {
   const [layout, setLayout] = useState<LayoutState | null>(null);
 
+  /*
+   * Text waiting in a pane's composer, keyed by pane id.
+   *
+   * Held here rather than in the layout because it must never be persisted: a handoff
+   * block restored days later, still unsent, would be worse than no handoff at all. It
+   * is consumed once, by the pane that opens for it.
+   */
+  const [pendingDrafts, setPendingDrafts] = useState<Record<string, string>>({});
+
   // Restored before the first paint of any terminal, so panes are created once with
   // their real identities rather than created for a default layout and then replaced.
   useEffect(() => {
@@ -269,6 +278,11 @@ export function App(): React.JSX.Element {
                   <Handoff
                     {...(pane.path === undefined ? {} : { cwd: pane.path })}
                     onCwdChange={(next) => apply((current) => setPanePath(current, tab.id, pane.id, next))}
+                    onOpenIn={(provider, text) => {
+                      const paneId = newId();
+                      setPendingDrafts((current) => ({ ...current, [paneId]: text }));
+                      apply((current) => createTab(current, () => paneId, provider, pane.path ?? here));
+                    }}
                   />
                 ) : pane.view === "files" ? (
                   <FileViewer
@@ -283,6 +297,10 @@ export function App(): React.JSX.Element {
                   // driven over their own JSON event streams; only shells keep a pty.
                   <AgentSessionPane
                     provider={pane.agent}
+                    {...(pendingDrafts[pane.id] === undefined ? {} : { initialDraft: pendingDrafts[pane.id] })}
+                    onDraftConsumed={() =>
+                      setPendingDrafts(({ [pane.id]: _taken, ...rest }) => rest)
+                    }
                     focused={tab.id === activeTab.id && pane.id === tab.activePaneId}
                     {...(pane.cwd === undefined ? {} : { cwd: pane.cwd })}
                     {...(pane.sessionId === undefined ? {} : { resumeSessionId: pane.sessionId })}

@@ -2,6 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 
 import type { LimitWindow, ProviderLimits } from "../../shared/limits.js";
+import type { SessionLimits } from "../../shared/session.js";
 
 /**
  * What each provider has left.
@@ -126,10 +127,34 @@ export async function readCodexLimits(): Promise<ProviderLimits> {
 }
 
 /** Claude has no usage command, so this states that rather than inventing a number. */
-export function claudeLimits(): ProviderLimits {
+/**
+ * What Claude has left.
+ *
+ * There is still no usage subcommand — but a session driven over stream-json is sent
+ * `rate_limit_event`, so the numbers exist for any agent oikist has actually run. Until
+ * one has, this says so rather than reporting a zero that would read as "plenty left".
+ */
+export function claudeLimits(fromStream: SessionLimits | null): ProviderLimits {
+  if (fromStream === null) {
+    return {
+      provider: "claude",
+      known: false,
+      note: "No Claude session has run yet. Its usage arrives on the session's own event stream."
+    };
+  }
   return {
     provider: "claude",
-    known: false,
-    note: "Claude publishes no usage command. Its limit is visible only in the agent's own status line."
+    known: true,
+    reached: fromStream.fiveHour >= 1 || fromStream.sevenDay >= 1,
+    primary: {
+      usedPercent: Math.round(fromStream.fiveHour * 100),
+      windowMinutes: 300,
+      resetsAt: null
+    },
+    secondary: {
+      usedPercent: Math.round(fromStream.sevenDay * 100),
+      windowMinutes: 10080,
+      resetsAt: null
+    }
   };
 }

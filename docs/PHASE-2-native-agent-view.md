@@ -373,6 +373,41 @@ written down, and walked into anyway.
 
 ---
 
+## Task 7 result — the rail, the limits, and a handoff that stays supervised
+
+**Done 2026-09-06.** 164/164, typecheck clean, verified by capture.
+
+**The rail is live again.** `AgentSessionManager.onState` reports reduced state outward;
+`AgentLauncher.applySessionState` updates the row and returns whether anything actually
+changed, so a stream that keeps saying the same thing costs no re-render. The capture
+shows a launched session reading `Working` while the attached one still reads
+`State unknown ~attached` — hard rule 7's distinction intact, and now with hooks gone
+entirely from that path.
+
+`railActivity` is the translation, and two of its choices are deliberate:
+
+- `starting` becomes **`unknown`**, not `idle`. A session nobody has spoken to has said
+  nothing, and `idle` would be a claim.
+- `needsAction` becomes **`waitingForInput`**, not `needsPermission`. `post_turn_summary`
+  says the human is needed; it does not say a permission prompt is open.
+
+**Claude's limits are no longer blank.** Section 6 and M7 both recorded that Claude
+publishes nothing readable, so the handoff view showed exact Codex numbers against
+nothing. `rate_limit_event` supplies five-hour and seven-day utilisation, cached as it
+arrives. Until an agent has actually run, the row says *why* it is empty rather than
+reporting a zero, which would read as "plenty left".
+
+**Handoff hands over without sending.** `Open in <provider>` opens a pane for the
+receiving agent with the block already in its composer, and stops. The clipboard round
+trip was doing two jobs — moving the text, and forcing someone to read it before it
+went — and only the first is obsolete now that both agents live in one window. Copy stays
+for handing off to something outside it.
+
+The pending text is held in `App`, keyed by pane id, and **never in the layout**: a
+handoff block restored days later, still unsent, would be worse than no handoff at all.
+
+---
+
 ## Architecture
 
 **One `AgentSession` per pane, in main.** Owns a child process, parses stdout JSONL into
@@ -440,7 +475,7 @@ seen working.
 6. ~~**Codex.**~~ **Done 2026-09-05. See *Task 6 result* above.** One process per turn,
    resumed by thread id. Original:
    attachments. Shape unknown — treat task 6 as a spike that may resize itself.
-7. **Rail and handoff.** Activity from `post_turn_summary`; Claude limits from
+7. ~~**Rail and handoff.**~~ **Done 2026-09-06. See *Task 7 result* above.** Original:
    `rate_limit_event`, making the handoff view symmetric. Handoff pre-fills the target
    composer **unsent** — section 10, and the fence's ban on unsupervised agent-to-agent
    messaging.

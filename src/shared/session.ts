@@ -151,6 +151,31 @@ export function reduceCodex(state: SessionState, rawLine: string): SessionState 
   }
 }
 
+/**
+ * Translates a session's activity into the vocabulary the agent rail speaks.
+ *
+ * The rail's words were designed around hook events; a native session has to be mapped
+ * onto them. Two choices worth stating, because both are places a status panel could
+ * quietly start lying:
+ *
+ * - `starting` becomes `unknown`, not `idle`. A session nobody has spoken to has said
+ *   nothing, and `idle` would be a claim rather than an observation.
+ * - `needsAction` becomes `waitingForInput`, not `needsPermission`. `post_turn_summary`
+ *   says the human is needed; it does not say a permission prompt is open.
+ */
+export function railActivity(activity: SessionActivity): "working" | "idle" | "waitingForInput" | "unknown" {
+  switch (activity) {
+    case "working":
+      return "working";
+    case "idle":
+      return "idle";
+    case "needsAction":
+      return "waitingForInput";
+    default:
+      return "unknown";
+  }
+}
+
 export interface SplitResult {
   readonly lines: readonly string[];
   /** The trailing fragment, if the chunk ended mid-line. Feed it back in as `held`. */
