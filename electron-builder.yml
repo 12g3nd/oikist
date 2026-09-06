@@ -6,11 +6,12 @@ directories:
 
 # asar is off deliberately.
 #
-# The hook relay is handed to Claude as a *path*, and Claude runs it with the real node
-# binary — which cannot read inside an archive. node-pty's native binding has the same
-# problem from the other side. Both are solvable with unpack rules and a path rewrite,
-# but this app is installed on exactly one machine, where an archive buys nothing worth
-# a class of silent runtime failures.
+# node-pty's native binding cannot be loaded from inside an archive. That is solvable
+# with unpack rules, but this app is installed on exactly one machine, where an archive
+# buys nothing worth a class of silent runtime failures.
+#
+# The hook relay was the other reason and is gone: agents report their own state on their
+# event stream now, so nothing is handed to a CLI as a path to execute.
 asar: false
 
 # node-pty is not rebuilt at package time.

@@ -353,3 +353,56 @@ test("session activity maps onto the rail's vocabulary", () => {
 test("needing the human is waiting for input, not a permission prompt", () => {
   assert.equal(railActivity("needsAction"), "waitingForInput");
 });
+
+/*
+ * M8 — showing what an agent is busy with — used to come from SubagentStart/Stop hooks.
+ * On the stream the same facts arrive as an `Agent` tool call and the messages that
+ * carry its id as `parent_tool_use_id`. Tool name and payload shape are from a real run.
+ */
+function agentCall(id: string, subagentType?: string): string {
+  return line({
+    type: "assistant",
+    session_id: "s-1",
+    message: {
+      role: "assistant",
+      content: [{ type: "tool_use", id, name: "Agent", input: subagentType === undefined ? {} : { subagent_type: subagentType } }]
+    }
+  });
+}
+
+function toolResult(id: string): string {
+  return line({
+    type: "user",
+    session_id: "s-1",
+    message: { role: "user", content: [{ type: "tool_result", tool_use_id: id }] }
+  });
+}
+
+test("an Agent tool call starts a subagent named by its type", () => {
+  const state = feed([init(), agentCall("toolu_1", "Explore")]);
+  assert.equal(state.subagents.active, 1);
+  assert.deepEqual(state.subagents.labels, ["Explore"]);
+});
+
+test("an unnamed subagent still counts, under the tool's own name", () => {
+  const state = feed([init(), agentCall("toolu_1")]);
+  assert.equal(state.subagents.active, 1);
+  assert.deepEqual(state.subagents.labels, ["Agent"]);
+});
+
+test("a subagent stops when its tool result comes back", () => {
+  const state = feed([init(), agentCall("toolu_1", "Explore"), toolResult("toolu_1")]);
+  assert.equal(state.subagents.active, 0);
+});
+
+test("two subagents are tracked independently", () => {
+  const state = feed([init(), agentCall("a", "Explore"), agentCall("b", "Plan"), toolResult("a")]);
+  assert.equal(state.subagents.active, 1);
+  assert.deepEqual(state.subagents.labels, ["Plan"]);
+});
+
+/** A turn ending with a subagent still marked running would leave the rail lying. */
+test("a result clears any subagent still marked running", () => {
+  const state = feed([init(), agentCall("toolu_1", "Explore"), line({ type: "result", subtype: "success" })]);
+  assert.equal(state.subagents.active, 0);
+});

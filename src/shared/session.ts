@@ -37,6 +37,13 @@ export interface SessionLimits {
   readonly sevenDay: number;
 }
 
+/** What the agent has delegated and not yet got back. */
+export interface SessionSubagents {
+  readonly active: number;
+  /** Types of the running subagents, in the order they started. */
+  readonly labels: readonly string[];
+}
+
 export interface SessionState {
   readonly sessionId: string | null;
   readonly model: string | null;
@@ -45,6 +52,14 @@ export interface SessionState {
   readonly activity: SessionActivity;
   readonly statusDetail: string | null;
   readonly limits: SessionLimits | null;
+  readonly subagents: SessionSubagents;
+  /**
+   * Tool-call ids of the running subagents, in start order.
+   *
+   * Kept so a subagent can be retired when *its own* result returns rather than when any
+   * result does — two running at once would otherwise stop each other's.
+   */
+  readonly subagentIds: readonly string[];
 }
 
 export function emptySession(): SessionState {
@@ -55,7 +70,9 @@ export function emptySession(): SessionState {
     turns: [],
     activity: "starting",
     statusDetail: null,
-    limits: null
+    limits: null,
+    subagents: { active: 0, labels: [] },
+    subagentIds: []
   };
 }
 
@@ -211,12 +228,26 @@ function stringList(value: unknown): readonly string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
-/** Splits an assistant message's content into its visible text and the tools it called. */
-function readContent(message: unknown): { text: string; tools: string[] } {
+/**
+ * The tool that launches a subagent.
+ *
+ * Named from a real run: it is `Agent`, not `Task` — a probe looking for `Task` found
+ * none at all while a subagent was demonstrably running.
+ */
+const SUBAGENT_TOOL = "Agent";
+
+interface Started {
+  readonly id: string;
+  readonly label: string;
+}
+
+/** Splits an assistant message's content into text, tool names, and subagent starts. */
+function readContent(message: unknown): { text: string; tools: string[]; started: Started[] } {
   const content = asRecord(message)?.content;
   const blocks = Array.isArray(content) ? content : [];
   const texts: string[] = [];
   const tools: string[] = [];
+  const started: Started[] = [];
 
   for (const raw of blocks) {
     const block = asRecord(raw);
@@ -226,11 +257,32 @@ function readContent(message: unknown): { text: string; tools: string[] } {
       if (text !== null) texts.push(text);
     } else if (block.type === "tool_use") {
       const name = asString(block.name);
-      if (name !== null) tools.push(name);
+      if (name === null) continue;
+      tools.push(name);
+      const id = asString(block.id);
+      if (name === SUBAGENT_TOOL && id !== null) {
+        // `subagent_type` is what the hook payload used to carry. When it is absent the
+        // tool's own name is used rather than inventing a label.
+        started.push({ id, label: asString(asRecord(block.input)?.subagent_type) ?? name });
+      }
     }
   }
 
-  return { text: texts.join(""), tools };
+  return { text: texts.join(""), tools, started };
+}
+
+/** Ids of subagents whose results came back in this message. */
+function finishedSubagents(message: unknown): string[] {
+  const content = asRecord(message)?.content;
+  const blocks = Array.isArray(content) ? content : [];
+  const done: string[] = [];
+  for (const raw of blocks) {
+    const block = asRecord(raw);
+    if (block?.type !== "tool_result") continue;
+    const id = asString(block.tool_use_id);
+    if (id !== null) done.push(id);
+  }
+  return done;
 }
 
 function utilisation(window: unknown): number | null {
@@ -276,11 +328,16 @@ export function reduceSession(state: SessionState, rawLine: string): SessionStat
     if (event.parent_tool_use_id != null) {
       return state.activity === "working" ? state : { ...state, activity: "working" };
     }
-    const { text, tools } = readContent(event.message);
+    const { text, tools, started } = readContent(event.message);
+    const ids = [...state.subagentIds, ...started.map((one) => one.id)];
+    const labels = [...state.subagents.labels, ...started.map((one) => one.label)];
     return {
       ...state,
       turns: [...state.turns, { role: "assistant", text, tools }],
-      activity: "working"
+      activity: "working",
+      ...(started.length === 0
+        ? {}
+        : { subagentIds: ids, subagents: { active: ids.length, labels } })
     };
   }
 
@@ -293,9 +350,32 @@ export function reduceSession(state: SessionState, rawLine: string): SessionStat
     };
   }
 
+  if (type === "user") {
+    // Tool results, including a subagent handing its work back.
+    const done = finishedSubagents(event.message);
+    if (done.length === 0) return state;
+    const keep = state.subagentIds
+      .map((id, index) => ({ id, label: state.subagents.labels[index] ?? SUBAGENT_TOOL }))
+      .filter((one) => !done.includes(one.id));
+    if (keep.length === state.subagentIds.length) return state;
+    return {
+      ...state,
+      subagentIds: keep.map((one) => one.id),
+      subagents: { active: keep.length, labels: keep.map((one) => one.label) }
+    };
+  }
+
   if (type === "result") {
-    // A turn ended. `needsAction` outranks it: the human is still owed something.
-    return state.activity === "needsAction" ? state : { ...state, activity: "idle" };
+    // A turn ended, so nothing it delegated is still running. A subagent left marked
+    // active here would make the rail claim work that has stopped.
+    const cleared = state.subagentIds.length === 0
+      ? {}
+      : { subagentIds: [], subagents: { active: 0, labels: [] } };
+    // `needsAction` outranks the turn ending: the human is still owed something.
+    if (state.activity === "needsAction") {
+      return state.subagentIds.length === 0 ? state : { ...state, ...cleared };
+    }
+    return { ...state, ...cleared, activity: "idle" };
   }
 
   if (type === "rate_limit_event") {

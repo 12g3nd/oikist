@@ -15,7 +15,6 @@ import {
 import { resolveRendererPath } from "../shared/renderer-path.js";
 import { mergeAgents } from "../shared/agents.js";
 import { AgentDiscovery } from "./agents/discovery.js";
-import { startHookServer, type HookServer } from "./agents/hook-server.js";
 import { AgentLauncher } from "./agents/launcher.js";
 import { LayoutStore, type WindowBounds } from "./layout-store.js";
 import { readWorkingState } from "./agents/git.js";
@@ -232,26 +231,9 @@ function createWindow(stored?: WindowBounds): BrowserWindow {
     console.error(`[preload-error] ${preloadPath}: ${error.message}`);
   });
 
-  // Wrapped rather than using forWebContents directly: an agent whose process ends is
-  // no longer running, and the rail must stop saying it is. A crashed agent never sends
-  // session-end, so the pty's own exit is the only reliable signal.
-  const manager = new PtyManager((channel, payload) => {
-    if (window.isDestroyed()) {
-      return;
-    }
-    window.webContents.send(channel, payload);
-    if (channel !== IPC.ptyExit) {
-      return;
-    }
-    const ptyId = (payload as { id: string }).id;
-    const sessionId = agentSessionForPty.get(ptyId);
-    if (sessionId !== undefined) {
-      agentSessionForPty.delete(ptyId);
-      if (launcher?.forget(sessionId) === true) {
-        publishAgents();
-      }
-    }
-  });
+  // Ptys carry shells only now, so nothing here has to retire a rail row: an agent's
+  // exit reaches the rail through `session:exit` instead.
+  const manager = PtyManager.forWebContents(window.webContents);
 
   // Read once, here, and never inside `closed`.
   //
@@ -270,7 +252,7 @@ function createWindow(stored?: WindowBounds): BrowserWindow {
     if (provider === "claude" && state.limits !== null) {
       claudeStreamLimits = state.limits;
     }
-    if (launcher?.applySessionState(sessionId, railActivity(state.activity)) === true) {
+    if (launcher?.applySessionState(sessionId, railActivity(state.activity), state.subagents) === true) {
       publishAgents();
     }
   });
@@ -305,28 +287,19 @@ ipcMain.handle(IPC.runtimeInfo, (): RuntimeInfo => ({
   platform: process.platform
 }));
 
+/**
+ * A pty is a shell now, and only a shell.
+ *
+ * Agents used to be spawned into one so they were visible and typeable; they are native
+ * conversation panes instead, and `session:start` is their entry point. Nothing here
+ * takes an `agent` any more.
+ */
 ipcMain.handle(IPC.ptyCreate, async (event, options: PtyCreateOptions): Promise<PtyCreated> => {
   const manager = managerFor(event);
   if (manager === undefined) {
     throw new Error("No terminal host for this window.");
   }
-  if (options.agent === undefined || launcher === null) {
-    return { id: await manager.create(options) };
-  }
-
-  const launch =
-    options.agent === "codex"
-      ? await launcher.prepareCodex(options.cwd)
-      : await launcher.prepare(options.cwd, options.resumeSessionId);
-  const id = await manager.create(options, { file: launch.file, args: launch.args });
-  agentSessionForPty.set(id, launch.sessionId);
-  // The pane appears in the rail immediately, before its first hook, so launching an
-  // agent has visible effect rather than a second of nothing.
-  publishAgents();
-  // The id goes back to the pane only when it can actually be resumed with it. For Codex
-  // it is oikist's own handle for a rail row, not a Codex thread id — storing it in the
-  // layout would make a restored pane offer to resume a session that does not exist.
-  return options.agent === "codex" ? { id } : { id, agentSessionId: launch.sessionId };
+  return { id: await manager.create(options) };
 });
 
 ipcMain.on(IPC.ptyWrite, (event, { id, data }: { id: string; data: string }) => {
@@ -379,18 +352,8 @@ ipcMain.on(IPC.sessionDispose, (event, { id }: { id: string }) => {
 /** Which native pane runs which agent session, so closing one retires its rail row. */
 const agentSessionForNative = new Map<string, string>();
 
-/** Which pty runs which agent session, so closing a pane retires its rail row. */
-const agentSessionForPty = new Map<string, string>();
-
 ipcMain.on(IPC.ptyDispose, (event, { id }: { id: string }) => {
   managerFor(event)?.dispose(id);
-  const sessionId = agentSessionForPty.get(id);
-  if (sessionId !== undefined) {
-    agentSessionForPty.delete(id);
-    if (launcher?.forget(sessionId) === true) {
-      publishAgents();
-    }
-  }
 });
 
 /**
@@ -398,7 +361,6 @@ ipcMain.on(IPC.ptyDispose, (event, { id }: { id: string }) => {
  *
  * Polling costs a process spawn per pass, so it is shared rather than run per window.
  */
-let hookServer: HookServer | null = null;
 let launcher: AgentLauncher | null = null;
 
 /**
@@ -489,17 +451,7 @@ ipcMain.on(IPC.layoutSave, (_event, layout: unknown) => {
 
 void app.whenReady().then(async () => {
   serveRenderer(fileURLToPath(new URL("../renderer/", import.meta.url)));
-  hookServer = await startHookServer((event) => {
-    if (launcher?.applyHookEvent(event) === true) {
-      publishAgents();
-    }
-  });
-  launcher = new AgentLauncher(hookServer.endpoint, hookServer.token);
-  void AgentLauncher.sweepStaleSettings().then((removed) => {
-    if (removed > 0) {
-      console.log(`swept ${removed} stale hook settings directories`);
-    }
-  });
+  launcher = new AgentLauncher();
   layoutStore = LayoutStore.in(app.getPath("userData"));
   const stored = await layoutStore.load();
   createWindow(stored.window);
@@ -517,8 +469,6 @@ void app.whenReady().then(async () => {
 /** Kills every shell, then quits. */
 function shutdown(code = 0): void {
   discovery.stop();
-  void hookServer?.close();
-  void launcher?.dispose();
   for (const sessions of sessionManagers.values()) {
     sessions.disposeAll();
   }

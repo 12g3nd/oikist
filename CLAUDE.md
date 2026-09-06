@@ -37,7 +37,7 @@ file, so rebuilding replaces what the pin already resolves to. Reasoning in
    Tauri, justified on a measured footprint (371MB shipped, 1.2MB of it ours). Until
    step 7 of the section 10 roadmap, **this repo is TypeScript and adding Rust is
    still wrong**: the product work comes first, on the code that exists. The renderer
-   and the pure domain layer (`layout.ts`, `agents.ts`, `handoff.ts`, `hooks.ts`,
+   and the pure domain layer (`layout.ts`, `agents.ts`, `handoff.ts`, `session.ts`,
    `files.ts`) stay TypeScript permanently and are never ported.
 3. **No new native modules.** `node-pty` is the one accepted native dependency, until
    step 7 replaces it with a Rust ConPTY crate. Adding any other (e.g.
@@ -166,11 +166,11 @@ backslash-bearing regexes with the Edit tool, or build them with `String.fromCha
 
 Two paths, and the difference is visible in the UI:
 
-- **Launched** (`certain`) — oikist spawned the agent with `--session-id` (assigned, not
-  recovered) and `--settings` pointing at a per-launch hooks file. Its hooks run
-  `resources/hook-relay.mjs`, which POSTs `{sessionId, kind}` to an ephemeral loopback
-  listener bound on `127.0.0.1:0` with a per-run bearer token. Nothing is ever written
-  to `~/.claude/settings.json`.
+- **Launched** (`certain`) — oikist spawned the agent itself and drives it over its own
+  JSON event stream: Claude with `--input-format/--output-format stream-json` and an
+  assigned `--session-id`, Codex with `codex exec --json` resumed by thread id. Activity,
+  usage and running subagents all arrive inline on that stream. Nothing is written to
+  `~/.claude/settings.json` or `~/.codex/config.toml`, and no settings file is passed.
 - **Attached** (`confident`) — found by polling `claude agents --json` every 5s. Identity
   only. Claude 2.1.238 no longer publishes activity anywhere readable, so these rows say
   `STATE UNKNOWN` rather than guessing.
@@ -182,9 +182,14 @@ stops being believed the first time it is wrong.
 
 - **node-pty does not search PATH.** A bare `claude` fails with `File not found:`.
   Resolve to an absolute `.exe` first; a `.cmd` shim will not work either.
-- **The hook relay must run under real Node, not Electron.** `process.execPath` is
-  `electron.exe`, which behaves as Node only with an env var a hook definition cannot
-  set, so the launcher resolves `node` from PATH.
+- **`system/init` arrives once per turn, not once per session.** It reads like a
+  session-open event and is not one; a reducer that resets on it erases the transcript
+  every time the user speaks. Turn boundaries are `result`; the session is the process.
+- **A fresh session is silent.** Nothing is emitted until the first turn is sent, so
+  "no events yet" cannot be read as "not started" — that made a pane say
+  "Starting Claude…" forever.
+- **Codex runs one process per turn** and needs its stdin closed immediately, or `codex
+  exec` waits for more input and the turn never starts.
 - **Never put a caller-supplied value in an effect's dependency array** if it can round
   trip through the parent. This has now bitten three times. `onExit` on the terminal recreated the pty on every parent render,
   spawning duplicate shells and duplicate rail rows; `onPathChange` on the file viewer
@@ -214,17 +219,17 @@ Verified by measurement rather than by reading: restoring an agent pane leaves t
 
 A shell pane is never dormant — a shell costs nothing to start.
 
-## Enumerating Claude's hook surface for free
+## Subagents, without hooks
 
-`claude doctor` reads settings from the current directory without a trust prompt, and
-prints the complete list of valid hook events when it meets an unknown one. Drop a
-settings file with a bogus event into a scratch directory and run it there — no tokens
-spent. Unknown events are ignored rather than fatal, so registering one a future version
-drops degrades quietly.
+Subagent tracking used `SubagentStart`/`SubagentStop` and a relay. It now reads the
+session's own stream: the launching tool call is named **`Agent`** (not `Task` — a probe
+looking for `Task` found none while a subagent was demonstrably running), its
+`input.subagent_type` carries the label, and the subagent's own messages are marked with
+`parent_tool_use_id`. A subagent is retired when *its* `tool_result` returns, and any
+still marked running are cleared at `result`.
 
-Subagent tracking uses `SubagentStart`/`SubagentStop`, verified live: both fire, and the
-payload's `subagent_type` names the subagent. That label is the only payload field the
-relay forwards — everything else in a hook payload is prompt or tool text.
+Those `parent_tool_use_id` messages must never enter the main transcript — folded in
+blindly they show the subagent's tool calls as the top-level agent's own.
 
 ## Comparing two measurements
 

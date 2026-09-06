@@ -408,6 +408,58 @@ handoff block restored days later, still unsent, would be worse than no handoff 
 
 ---
 
+## Task 8 result — the hook path is gone, and M8 was rebuilt first
+
+**Done 2026-09-06.** 142/142, typecheck clean, app still exits under `OIKIST_CLOSE_TEST`,
+a live turn verified after the deletion.
+
+### It could not be a deletion, because a feature was already broken
+
+Task 5 routed every `pane.agent` pane to the native view, which made the pty agent launch
+unreachable — the `agent` prop on the terminal branch can no longer be set. **So hooks
+had been firing for nothing since task 5, and M8's subagent display was already dead.**
+A regression introduced two tasks earlier and noticed only when this one went looking.
+
+Deleting the relay at that point would have looked like the cause. **M8 was rebuilt on
+the stream first**, with five failing tests written before the code.
+
+### Subagents, on the stream
+
+- The launching tool is **`Agent`**, not `Task`. A probe searching for `Task` found none
+  while a subagent was demonstrably running (task 4).
+- Its `input.subagent_type` carries the label; when absent the tool's own name is used
+  rather than a label being invented.
+- The subagent's own messages carry `parent_tool_use_id`, and are kept out of the main
+  transcript — folded in, they show its tool calls as the top-level agent's.
+- A subagent is retired when **its own** `tool_result` returns, tracked by id, so two
+  running at once do not stop each other's. Any still marked running are cleared at
+  `result`, since a turn that ended cannot still be delegating.
+
+### Deleted
+
+`src/main/agents/hook-server.ts`, `resources/hook-relay.mjs`, `src/shared/hooks.ts`,
+`AgentLauncher.prepare` / `prepareCodex` / `applyHookEvent` / `sweepStaleSettings` /
+`dispose` / `#resolveNode`, the launcher's endpoint and token, the `ptyCreate` agent
+branch, the pty-to-session bookkeeping, and three test files.
+
+The launcher went from 300 lines to 116. With them go the ephemeral loopback listener,
+the per-run bearer token, the per-launch settings file, the stale-settings sweep, and the
+trap that the relay had to be run by a separately-resolved real `node` because
+`process.execPath` is `electron.exe`.
+
+**A pty is a shell now, and only a shell.**
+
+### Documentation corrected rather than left to rot
+
+`CLAUDE.md`'s "How agent state reaches the app" described the relay in detail and would
+have been actively misleading. Its trap list swapped the real-Node trap for the three
+this phase actually cost: `init` is per turn, a fresh session is silent, and `codex exec`
+needs its stdin closed. `electron-builder.yml` still turns `asar` off — **node-pty's
+binding is reason enough on its own**, and the comment no longer cites a relay that does
+not exist.
+
+---
+
 ## Architecture
 
 **One `AgentSession` per pane, in main.** Owns a child process, parses stdout JSONL into
@@ -479,7 +531,8 @@ seen working.
    `rate_limit_event`, making the handoff view symmetric. Handoff pre-fills the target
    composer **unsent** — section 10, and the fence's ban on unsupervised agent-to-agent
    messaging.
-8. **Delete the hook relay.** Own commit, after 1–7.
+8. ~~**Delete the hook relay.**~~ **Done 2026-09-06. See *Task 8 result* above.** It could
+   not be a plain deletion: M8 had to be rebuilt on the stream first.
 
 ---
 
