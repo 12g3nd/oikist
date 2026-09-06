@@ -59,6 +59,44 @@ export function emptySession(): SessionState {
   };
 }
 
+/**
+ * Records a turn the human typed.
+ *
+ * The stream's own `user` events carry tool results rather than what was typed, so they
+ * are ignored by `reduceSession` and the human's side of the transcript is added here,
+ * by the caller that sent it.
+ */
+export function appendUserTurn(state: SessionState, text: string): SessionState {
+  return {
+    ...state,
+    turns: [...state.turns, { role: "user", text, tools: [] }],
+    activity: "working"
+  };
+}
+
+export interface SplitResult {
+  readonly lines: readonly string[];
+  /** The trailing fragment, if the chunk ended mid-line. Feed it back in as `held`. */
+  readonly rest: string;
+}
+
+/**
+ * Splits a stdout chunk into whole lines, carrying any partial line forward.
+ *
+ * The OS decides where reads break, so a JSON line is routinely delivered in two pieces.
+ * Everything else in this file assumes whole lines; this is what guarantees them. `rest`
+ * is deliberately left untrimmed — it may end mid-token, and trimming it could corrupt
+ * the line once its remainder arrives.
+ */
+export function splitLines(held: string, chunk: string): SplitResult {
+  const parts = (held + chunk).split("\n");
+  const rest = parts.pop() ?? "";
+  return {
+    lines: parts.map((part) => part.trim()).filter((part) => part !== ""),
+    rest
+  };
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
 }
@@ -130,6 +168,12 @@ export function reduceSession(state: SessionState, rawLine: string): SessionStat
   }
 
   if (type === "assistant") {
+    // A subagent's messages ride the same stream, marked by `parent_tool_use_id`. They
+    // are work happening *inside* a tool call the agent already reported, so folding
+    // them in as turns would show the subagent's tools as the agent's own.
+    if (event.parent_tool_use_id != null) {
+      return state.activity === "working" ? state : { ...state, activity: "working" };
+    }
     const { text, tools } = readContent(event.message);
     return {
       ...state,

@@ -204,6 +204,57 @@ observe.
 
 ---
 
+## Task 4 result — the manager, and subagents without hooks
+
+**Done 2026-09-05.** `src/main/agent-session.ts` (`AgentSessionManager`), the six IPC
+channels, the preload bridge, `AgentLauncher.prepareSession`, and per-window wiring in
+`index.ts` on the same create/close/shutdown paths as `PtyManager`. 154/154, typecheck
+clean.
+
+### The subagent gate is open: hooks are not needed at all
+
+One run, forcing a subagent, answered what tasks 1 and 3 left open:
+
+| signal | result |
+|---|---|
+| events carrying `parent_tool_use_id` | **5** — subagent traffic is identifiable live |
+| `result.subagent_stats` | `{"spawned":1,"completed":1,"by_type":{"Explore":1}}` |
+
+`by_type` names the subagent exactly as `SubagentStart`'s `subagent_type` does, and
+`parent_tool_use_id` attributes messages live. **So `--settings`, the hook relay and the
+hook server are all unnecessary for the native path** — `prepareSession` writes no
+settings file, and the M8 feature survives the change.
+
+Two caveats worth keeping. `subagent_stats` only arrives with `result`, at the end of a
+turn, so live labelling has to come from the `Agent` tool call. And **the tool is named
+`Agent`, not `Task`** — the run looked for `Task` and found none. Whether that call's
+input carries `subagent_type` is unconfirmed; it costs nothing to check during task 5,
+where real sessions run anyway.
+
+### A defect the real stream found
+
+Replaying the captured run through the reducer produced tools `["Agent","Glob","Glob"]`
+on the main thread. The two `Glob` calls were the **subagent's**, arriving on the same
+stream with `parent_tool_use_id` set, and folded in as though the top-level agent had
+made them. Fixed with a failing test first: a message carrying `parent_tool_use_id`
+advances activity but never becomes a turn.
+
+Worth noting how it was found. Twelve hand-written tests did not catch it, because the
+fixtures were written from a stream that had no subagent in it. **Real data found what
+imagined data could not** — which is the argument for task 3's rule that fixtures come
+from runs rather than from imagination, and an argument for replaying a real capture
+through the pure layer whenever the stream gains a new shape.
+
+### What is verified, and what is not
+
+The reducer and `splitLines` are verified against a **real** stream, deliberately
+re-chunked at 37-byte boundaries to break lines in awkward places. The manager's process
+plumbing — spawn, stdin write, SIGINT, exit — is typechecked and reviewed but **has not
+yet been executed**. Task 5 drives it from the UI, which is where it gets its first real
+exercise; do not treat it as proven until then.
+
+---
+
 ## Architecture
 
 **One `AgentSession` per pane, in main.** Owns a child process, parses stdout JSONL into
@@ -257,7 +308,8 @@ seen working.
 3. ~~**`src/shared/session.ts` — pure reducers, TDD.**~~ **Done 2026-09-05. See *Task 3
    result* above.** 12 tests, written failing first; hooks proved unnecessary for
    activity, with subagents the one open gate.
-4. **`AgentSession` in main + the six IPC channels.** Spawn, parse, reduce, push. Reuse
+4. ~~**`AgentSession` in main + the six IPC channels.**~~ **Done 2026-09-05. See *Task 4
+   result* above.** Hooks proved unnecessary for subagents too. Original:
    `launcher.ts`'s absolute-path resolution — node-pty does not search PATH, and neither
    should this.
 5. **`AgentSession.tsx` — turn list and composer.** The point of the whole phase:

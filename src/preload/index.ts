@@ -12,7 +12,11 @@ import {
   type AgentsSnapshot,
   type DirectoryListing,
   type PtyCreated,
-  type RuntimeInfo
+  type RuntimeInfo,
+  type SessionStartOptions,
+  type SessionStarted,
+  type SessionEventMessage,
+  type SessionExitMessage
 } from "../shared/ipc.js";
 
 /**
@@ -44,6 +48,15 @@ const bridge: OikistBridge = {
     dispose: (id) => ipcRenderer.send(IPC.ptyDispose, { id }),
     onData: (listener) => subscribe<PtyDataMessage>(IPC.ptyData, listener),
     onExit: (listener) => subscribe<PtyExitMessage>(IPC.ptyExit, listener)
+  },
+  session: {
+    start: (options: SessionStartOptions) =>
+      ipcRenderer.invoke(IPC.sessionStart, options) as Promise<SessionStarted>,
+    send: (id, text) => ipcRenderer.send(IPC.sessionSend, { id, text }),
+    interrupt: (id) => ipcRenderer.send(IPC.sessionInterrupt, { id }),
+    dispose: (id) => ipcRenderer.send(IPC.sessionDispose, { id }),
+    onEvent: (listener) => subscribe<SessionEventMessage>(IPC.sessionEvent, listener),
+    onExit: (listener) => subscribe<SessionExitMessage>(IPC.sessionExit, listener)
   },
   layout: {
     load: () => ipcRenderer.invoke(IPC.layoutLoad) as Promise<unknown>,

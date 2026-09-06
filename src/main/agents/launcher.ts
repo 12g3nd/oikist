@@ -134,6 +134,38 @@ export class AgentLauncher {
   }
 
   /**
+   * Prepares a native agent pane — one driven over stream-json rather than a pty.
+   *
+   * Deliberately thinner than `prepare`: no `--settings`, because a native session takes
+   * its state from the event stream itself. Activity, limits and the turn list all
+   * arrive inline, so the hook relay has nothing left to carry.
+   *
+   * The one thing hooks still do that the stream has not been shown to do is name a
+   * subagent, so `prepare` and its settings file stay until that is settled. See
+   * `docs/PHASE-2-native-agent-view.md`.
+   */
+  async prepareSession(
+    cwd?: string,
+    resumeSessionId?: string
+  ): Promise<{ sessionId: string; file: string }> {
+    const file = await this.#resolveExecutable("claude");
+    if (file === null) {
+      throw new Error("Claude was not found on PATH. Install Claude Code, or open a shell pane instead.");
+    }
+
+    const sessionId = resumeSessionId ?? randomUUID();
+    this.#launched.set(sessionId, {
+      sessionId,
+      // Honest until the stream says otherwise, exactly as `prepare` is.
+      activity: "unknown",
+      startedAt: Date.now(),
+      ...(cwd === undefined ? {} : { cwd, title: projectFromCwd(cwd) })
+    });
+
+    return { sessionId, file };
+  }
+
+  /**
    * Starts a Codex session that oikist owns.
    *
    * Far less is possible here than for Claude, and the difference is the platform's, not

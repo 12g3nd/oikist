@@ -4,7 +4,14 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, net, protocol, shell } from "electron";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 
-import { IPC, type PtyCreateOptions, type PtyCreated, type RuntimeInfo } from "../shared/ipc.js";
+import {
+  IPC,
+  type PtyCreateOptions,
+  type PtyCreated,
+  type RuntimeInfo,
+  type SessionStartOptions,
+  type SessionStarted
+} from "../shared/ipc.js";
 import { resolveRendererPath } from "../shared/renderer-path.js";
 import { mergeAgents } from "../shared/agents.js";
 import { AgentDiscovery } from "./agents/discovery.js";
@@ -15,6 +22,7 @@ import { readWorkingState } from "./agents/git.js";
 import { claudeLimits, readCodexLimits } from "./agents/limits.js";
 import { listDirectory, readTextFile } from "./files.js";
 import { PtyManager } from "./pty.js";
+import { AgentSessionManager } from "./agent-session.js";
 
 /**
  * The renderer is served over `app://` rather than loaded from `file://`.
@@ -98,6 +106,9 @@ async function captureIfRequested(window: BrowserWindow): Promise<void> {
  */
 const ptyManagers = new Map<number, PtyManager>();
 
+/** The same, for native agent panes. Keyed identically, disposed on the same paths. */
+const sessionManagers = new Map<number, AgentSessionManager>();
+
 /** Created once app paths are available, so `app.getPath` has a real answer. */
 let layoutStore: LayoutStore | null = null;
 
@@ -119,6 +130,10 @@ function rememberBounds(window: BrowserWindow): void {
 
 function managerFor(event: IpcMainEvent | IpcMainInvokeEvent): PtyManager | undefined {
   return ptyManagers.get(event.sender.id);
+}
+
+function sessionsFor(event: IpcMainEvent | IpcMainInvokeEvent): AgentSessionManager | undefined {
+  return sessionManagers.get(event.sender.id);
 }
 
 /**
@@ -211,10 +226,16 @@ function createWindow(stored?: WindowBounds): BrowserWindow {
   // or not a terminal had ever been opened.
   const contentsId = window.webContents.id;
   ptyManagers.set(contentsId, manager);
+
+  const sessions = AgentSessionManager.forWebContents(window.webContents);
+  sessionManagers.set(contentsId, sessions);
+
   window.on("closed", () => {
     // Shells are killed with their window rather than left running headless.
     manager.disposeAll();
     ptyManagers.delete(contentsId);
+    sessions.disposeAll();
+    sessionManagers.delete(contentsId);
   });
 
   // Debounced inside the store, so a drag writes once rather than once per frame.
@@ -269,6 +290,46 @@ ipcMain.on(IPC.ptyWrite, (event, { id, data }: { id: string; data: string }) => 
 ipcMain.on(IPC.ptyResize, (event, { id, cols, rows }: { id: string; cols: number; rows: number }) => {
   managerFor(event)?.resize(id, cols, rows);
 });
+
+ipcMain.handle(IPC.sessionStart, async (event, options: SessionStartOptions): Promise<SessionStarted> => {
+  const sessions = sessionsFor(event);
+  if (sessions === undefined || launcher === null) {
+    throw new Error("No agent host for this window.");
+  }
+  const launch = await launcher.prepareSession(options.cwd, options.resumeSessionId);
+  const id = sessions.start({
+    file: launch.file,
+    sessionId: launch.sessionId,
+    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+    ...(options.resumeSessionId === undefined ? {} : { resumeSessionId: options.resumeSessionId })
+  });
+  // The row appears before the first event, so starting an agent has visible effect.
+  publishAgents();
+  agentSessionForNative.set(id, launch.sessionId);
+  return { id, agentSessionId: launch.sessionId };
+});
+
+ipcMain.on(IPC.sessionSend, (event, { id, text }: { id: string; text: string }) => {
+  sessionsFor(event)?.send(id, text);
+});
+
+ipcMain.on(IPC.sessionInterrupt, (event, { id }: { id: string }) => {
+  sessionsFor(event)?.interrupt(id);
+});
+
+ipcMain.on(IPC.sessionDispose, (event, { id }: { id: string }) => {
+  sessionsFor(event)?.dispose(id);
+  const sessionId = agentSessionForNative.get(id);
+  if (sessionId !== undefined) {
+    agentSessionForNative.delete(id);
+    if (launcher?.forget(sessionId) === true) {
+      publishAgents();
+    }
+  }
+});
+
+/** Which native pane runs which agent session, so closing one retires its rail row. */
+const agentSessionForNative = new Map<string, string>();
 
 /** Which pty runs which agent session, so closing a pane retires its rail row. */
 const agentSessionForPty = new Map<string, string>();
@@ -397,6 +458,10 @@ function shutdown(code = 0): void {
   discovery.stop();
   void hookServer?.close();
   void launcher?.dispose();
+  for (const sessions of sessionManagers.values()) {
+    sessions.disposeAll();
+  }
+  sessionManagers.clear();
   for (const manager of ptyManagers.values()) {
     manager.disposeAll();
   }

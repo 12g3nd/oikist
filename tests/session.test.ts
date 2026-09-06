@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  appendUserTurn,
   emptySession,
   reduceSession,
+  splitLines,
   type SessionState
 } from "../src/shared/session.js";
 
@@ -180,4 +182,80 @@ test("hook events are not turns", () => {
     })
   ]);
   assert.equal(state.turns.length, 0);
+});
+
+/**
+ * stdout arrives in whatever chunks the OS hands over, so a JSON line is routinely split
+ * across two reads. Everything above assumes whole lines; this is what guarantees them.
+ */
+test("a whole line is emitted and nothing is held back", () => {
+  const { lines, rest } = splitLines("", '{"a":1}\n');
+  assert.deepEqual(lines, ['{"a":1}']);
+  assert.equal(rest, "");
+});
+
+test("a partial line is held until the rest of it arrives", () => {
+  const first = splitLines("", '{"a":');
+  assert.deepEqual(first.lines, [], "nothing is emitted from half a line");
+
+  const second = splitLines(first.rest, '1}\n');
+  assert.deepEqual(second.lines, ['{"a":1}']);
+});
+
+test("several lines in one chunk are all emitted", () => {
+  const { lines } = splitLines("", '{"a":1}\n{"b":2}\n');
+  assert.deepEqual(lines, ['{"a":1}', '{"b":2}']);
+});
+
+test("carriage returns and blank lines are not emitted as lines", () => {
+  const { lines } = splitLines("", '{"a":1}\r\n\r\n{"b":2}\r\n');
+  assert.deepEqual(lines, ['{"a":1}', '{"b":2}']);
+});
+
+/**
+ * The stream's own `user` events are tool results, not what the human typed, so the
+ * transcript would otherwise show only one side of the conversation. The manager knows
+ * what it sent and appends it here.
+ */
+test("a user turn is appended and marks the session working", () => {
+  const state = appendUserTurn(feed([init()]), "do the thing");
+  assert.equal(state.turns.length, 1);
+  assert.equal(state.turns[0]?.role, "user");
+  assert.equal(state.turns[0]?.text, "do the thing");
+  assert.equal(state.activity, "working");
+});
+
+test("a tool result on the stream does not become a user turn", () => {
+  const state = feed([
+    init(),
+    line({
+      type: "user",
+      session_id: "s-1",
+      message: { role: "user", content: [{ type: "tool_result", content: "hi" }] }
+    })
+  ]);
+  assert.equal(state.turns.length, 0, "tool results are not the human speaking");
+});
+
+/**
+ * Observed on a real run: a subagent's own messages arrive on the same stream, carrying
+ * `parent_tool_use_id`. Folded in blindly they become main-thread turns, so the
+ * transcript shows the subagent's Glob calls as though the top-level agent made them.
+ */
+test("a subagent's messages do not enter the main transcript", () => {
+  const state = feed([
+    init(),
+    assistantText("delegating"),
+    line({
+      type: "assistant",
+      session_id: "s-1",
+      parent_tool_use_id: "toolu_01abc",
+      message: {
+        role: "assistant",
+        content: [{ type: "tool_use", name: "Glob", input: { pattern: "*.ts" } }]
+      }
+    })
+  ]);
+  assert.equal(state.turns.length, 1, "only the top-level message is a turn");
+  assert.deepEqual(state.turns[0]?.tools, [], "the subagent's tools are not the agent's");
 });

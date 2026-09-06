@@ -2,6 +2,7 @@ import type { AgentSummary } from "./agents.js";
 import type { FileContent, FileEntry } from "./files.js";
 import type { WorkingState } from "./handoff.js";
 import type { ProviderLimits } from "./limits.js";
+import type { SessionState } from "./session.js";
 
 /**
  * The contract between the main process and the renderer.
@@ -39,7 +40,16 @@ export const IPC = {
 
   agentsList: "agents:list",
   /** Main to renderer, once per discovery pass. */
-  agentsUpdated: "agents:updated"
+  agentsUpdated: "agents:updated",
+
+  /* A native agent pane. Unlike a pty these carry reduced state, not raw bytes. */
+  sessionStart: "session:start",
+  sessionSend: "session:send",
+  sessionInterrupt: "session:interrupt",
+  sessionDispose: "session:dispose",
+  /** Main to renderer, once per change in reduced state. */
+  sessionEvent: "session:event",
+  sessionExit: "session:exit"
 } as const;
 
 export interface PtyCreateOptions {
@@ -78,6 +88,43 @@ export interface PtyBridge {
   readonly onExit: (listener: (message: PtyExitMessage) => void) => () => void;
 }
 
+export interface SessionStartOptions {
+  readonly cwd?: string;
+  /** Set to reopen a previous conversation rather than begin a new one. */
+  readonly resumeSessionId?: string;
+}
+
+export interface SessionStarted {
+  readonly id: string;
+  readonly agentSessionId: string;
+}
+
+export interface SessionEventMessage {
+  readonly id: string;
+  readonly state: SessionState;
+}
+
+export interface SessionExitMessage {
+  readonly id: string;
+  readonly exitCode: number;
+}
+
+/**
+ * A native agent pane.
+ *
+ * The pty bridge carries bytes; this one carries reduced state, because the renderer
+ * draws a conversation rather than a character grid.
+ */
+export interface SessionBridge {
+  readonly start: (options: SessionStartOptions) => Promise<SessionStarted>;
+  readonly send: (id: string, text: string) => void;
+  readonly interrupt: (id: string) => void;
+  readonly dispose: (id: string) => void;
+  /** Returns an unsubscribe function, so a React effect can clean up after itself. */
+  readonly onEvent: (listener: (message: SessionEventMessage) => void) => () => void;
+  readonly onExit: (listener: (message: SessionExitMessage) => void) => () => void;
+}
+
 export interface RuntimeInfo {
   readonly app: string;
   readonly electron: string;
@@ -90,6 +137,7 @@ export interface RuntimeInfo {
 export interface OikistBridge {
   readonly runtimeInfo: () => Promise<RuntimeInfo>;
   readonly pty: PtyBridge;
+  readonly session: SessionBridge;
   readonly layout: {
     /** Raw stored value. The renderer validates it with `parseLayout`. */
     readonly load: () => Promise<unknown>;
