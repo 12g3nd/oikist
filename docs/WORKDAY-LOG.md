@@ -3,7 +3,11 @@
 The other half of done:
 
 > All six switch-bar items work, **and oikist has been used for one full workday without
-> opening Wave.**
+> reaching for VS Code and its agent extensions.**
+
+**The criterion changed on 2026-09-05.** Day 1 met the old one — Wave was never opened —
+and lost the work to VS Code anyway, which means it had named a competitor that had
+already stopped being one. A test whose failure condition cannot occur is not a test.
 
 This file is the instrument for that. The tests cannot find what a day of real work
 finds, so the point is to write friction down *as it happens* rather than remember it
@@ -37,11 +41,11 @@ palette is not a finding; it is a decision already made.
 
 At the end of the day, one of:
 
-- **Passed** — a full day, Wave unopened.
+- **Passed** — a full day, VS Code's agent extensions unopened.
 - **Failed, with a reason** — what sent you back, named specifically.
 
-A day that ends with "mostly fine" is a fail. If the honest answer is that Wave got
-opened, believe the behaviour rather than the checklist.
+A day that ends with "mostly fine" is a fail. If the honest answer is that the extensions
+got opened, believe the behaviour rather than the checklist.
 
 ---
 
@@ -68,3 +72,49 @@ directory chip.
   for their kind. The morning's two fixes are both in the build and neither is doing
   anything, because both depend on an explicit action that has not been taken. Open
   question: was the chip not noticed, or not needed?
+
+### Day 2 — not yet run
+
+Prepared 2026-09-06, on `a186e93`, after phase 2 (`docs/PHASE-2-native-agent-view.md`).
+Agent panes are conversations rather than terminals; this is the day that says whether
+that was the right diagnosis of day 1.
+
+**What changed since day 1, and so what is actually being tested:**
+
+- Claude and Codex panes have a real composer — caret, click-to-position, markdown,
+  attachment chips, slash-command autocomplete. Four of day 1's seven complaints.
+- The rail reports activity and subagents from the agents' own event streams.
+- Claude's usage shows in the handoff view; handoff pre-fills the target composer unsent.
+- The look is quieter: no tracking, sentence case.
+
+**Not changed, and expected to still send you away** — these are steps 4-6, deliberately
+not built until this day says the design is right:
+
+- No session history. Reopening an old session is still not possible.
+- No git. No diff of what an agent just changed.
+- Editing still means opening VS Code.
+
+Those three are the *known* gaps. The point of the day is what else turns up.
+
+**Pre-flight, run 2026-09-06:**
+
+| check | result |
+|---|---|
+| `npm run verify` | 142/142, typecheck clean |
+| `npm run package` | `dist/win-unpacked/oikist.exe`, 224MB |
+| app exits on window close | passes (`OIKIST_CLOSE_TEST`) |
+| a Claude turn, end to end | passes |
+| **restore, then resume** | **passes** — `--resume` carries context on the native transport |
+| restore does not auto-launch | passes — restored agent panes stayed dormant |
+| shell panes | pass |
+| **Codex turns** | **fail — environment, not oikist.** See below |
+
+**Codex will fail every turn until this is fixed.** `~/.codex/config.toml` pins
+`gpt-6-astra`; the installed `codex-cli 0.149.0` cannot run it and returns *"requires a
+newer version of Codex"*. This affects Codex everywhere on this machine, not just oikist.
+oikist deliberately passes no `-m` override — substituting a model the user did not choose
+would be exactly the kind of silent behaviour change hard rule 4 exists to prevent — so
+the pane shows the real error. **Upgrade the CLI or change the model before the day
+starts**, or Codex is untestable and half the handoff feature with it.
+
+- HH:MM · started · —
