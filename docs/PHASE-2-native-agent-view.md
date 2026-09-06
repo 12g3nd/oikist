@@ -49,14 +49,67 @@ run on 2026-09-05, five events. Everything below is observed, not assumed.
 
 ### What is NOT verified — do not plan as if it is
 
-- **`--include-hook-events` produced no hook events in that run.** The run was
-  `--restricted` with no hooks configured in the scratch directory, so nothing should
-  have fired. The flag is **unproven**, and task 1 exists to prove it. Do not build the
-  state model on it — `post_turn_summary` may make it redundant.
+- ~~`--include-hook-events` is unproven.~~ **Settled by task 1 — see below.**
 - **`--input-format stream-json` multi-turn was not exercised.** One-shot only. Task 2.
 - **`codex exec --json` shape is unknown.** The flag exists ("Print events to stdout as
   JSONL"); nothing was spent confirming its events. Task 6. Note the section 6 hazard:
   the Codex weekly window has been exhausted before and silently shaped what got built.
+
+---
+
+## Task 1 result — hook events, settled
+
+**Run 2026-09-05. The flag is required, and the relay can die.**
+
+| condition | tool call | lifecycle hook events |
+|---|---|---|
+| `--include-hook-events` (n=2) | Bash, confirmed | `PreToolUse:Bash`, `PostToolUse:Bash`, `Stop`, `Stop` |
+| no flag (n=2) | Bash, confirmed | **none** |
+
+`SessionStart` events arrive either way; everything else needs the flag.
+
+**Payload** — `system`/`hook_started` and `system`/`hook_response`:
+
+```json
+{ "type": "system", "subtype": "hook_started", "hook_id": "6c01c1fb-...",
+  "hook_name": "PreToolUse:Bash", "hook_event": "PreToolUse",
+  "uuid": "...", "session_id": "..." }
+```
+
+Note what is *absent*: no prompt text, no tool input, no tool output. The stream already
+enforces what `hook-relay.mjs` had to be careful to do by hand — forward the label, never
+the content.
+
+### Two things this changes
+
+**A settings file is still needed, but the relay is not.** Hook events report *configured
+hooks running*; with no hook configured for an event, nothing fires. So a per-launch
+`--settings` file stays (hard rule 4 — never the global one). Its commands become
+**no-ops** (`cmd /c exit 0`): the event reaches oikist by being on the stream, not by the
+command doing anything. `hook-server.ts`, `hook-relay.mjs`, the loopback listener, the
+bearer token and the real-`node` resolution all die.
+
+**Consider skipping hooks entirely.** `assistant` messages already carry `tool_use`
+blocks, and `post_turn_summary` carries `needs_action`. Between them, "what is this agent
+doing" may need no hooks at all — which would drop the settings file too. **Unverified:
+whether `SubagentStart`/`SubagentStop` (the M8 feature) have a non-hook equivalent.**
+Decide during task 3, on fixtures, not now.
+
+### The confound, recorded because it nearly produced a wrong answer
+
+The first design — flag/no-flag/control, one run each — gave line counts of 22/29/22 and
+looked decisive. It was not. Two faults:
+
+1. **The user's global config has 5 `SessionStart` hooks.** Every arm inherited them, so
+   the baseline was never zero and `--settings` merges with global rather than replacing
+   it. **oikist will receive the user's own hooks' events on the stream and must ignore
+   them by `hook_name`.**
+2. **The model did not call a tool in two of the three arms.** The 7-line difference was
+   entirely explained by *whether Bash ran*, not by the flag. Only forcing the tool call
+   and re-running made the arms comparable.
+
+This is the M3 lesson repeating: validate the measurement before believing what it says.
+A prompt that lets the model choose whether to use a tool is not a controlled arm.
 
 ---
 
@@ -88,10 +141,15 @@ plus a composer. `Terminal.tsx` is untouched and keeps serving shells.
 
 ### What this deletes
 
-`src/main/agents/hook-server.ts` (127 lines) and `resources/hook-relay.mjs`, **once task
-1 confirms state arrives inline** — and with them the ephemeral loopback listener, the
-per-run bearer token, the per-launch `--settings` file, and the trap that the relay needs
-a separately-resolved real `node` because `process.execPath` is `electron.exe`.
+`src/main/agents/hook-server.ts` (127 lines) and `resources/hook-relay.mjs`. **Task 1
+confirmed state arrives inline** — and with them the ephemeral loopback listener, the
+per-run bearer token, and the trap that the relay needs a separately-resolved real `node`
+because `process.execPath` is `electron.exe`.
+
+**The per-launch `--settings` file survives**, contrary to the first draft of this plan:
+task 1 showed hook events fire only for *configured* hooks, so something must configure
+them. What changes is that its commands become no-ops. It drops out entirely only if
+task 3 finds `tool_use` and `post_turn_summary` sufficient on their own.
 
 **Delete in a commit of its own, after the replacement works.** Not alongside it.
 
@@ -102,9 +160,7 @@ a separately-resolved real `node` because `process.execPath` is `electron.exe`.
 Ordered. Each is independently verifiable; do not start one before its predecessor is
 seen working.
 
-1. **Prove `--include-hook-events`.** A real directory, hooks configured, tools allowed.
-   Record the event shapes in this file. If hook events do not arrive, say so and use
-   `post_turn_summary` alone — that is an acceptable outcome, not a failure.
+1. ~~**Prove `--include-hook-events`.**~~ **Done 2026-09-05. See *Task 1 result* below.**
 2. **Prove multi-turn `--input-format stream-json`.** Two turns over one stdin pipe,
    with `--session-id`. Confirm the process stays alive between turns; if it does not,
    the model is one process per turn with `--resume`, which changes tasks 3 and 5.
