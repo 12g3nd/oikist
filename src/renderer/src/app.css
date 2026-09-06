@@ -998,3 +998,29 @@ body {
   border-color: var(--border);
   color: var(--fg-dim);
 }
+
+/*
+ * The status line, mirroring what both CLIs put at the bottom of their own screens.
+ *
+ * Dense on purpose — day 2's complaint was that the app read as a concept, and a row of
+ * live facts is the cheapest thing that makes a pane feel instrumented rather than empty.
+ */
+.statusline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 10px;
+  color: var(--fg-dim);
+  line-height: 1.6;
+}
+
+.statusline-model { color: var(--fg); }
+.statusline-branch::before { content: "⎇ "; }
+.statusline-mode { color: var(--danger); }
+.statusline-thinking { color: var(--accent); }
+.statusline-subagents { color: var(--accent); }
+.statusline-usage { margin-left: auto; font-variant-numeric: tabular-nums; }

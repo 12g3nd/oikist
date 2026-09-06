@@ -48,6 +48,7 @@ export function AgentSessionPane({
   const [started, setStarted] = useState(false);
   const [draft, setDraft] = useState(initialDraft ?? "");
   const [attachments, setAttachments] = useState<readonly string[]>([]);
+  const [branch, setBranch] = useState<string | null>(null);
 
   const idRef = useRef<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -126,6 +127,33 @@ export function AgentSessionPane({
       composerRef.current?.focus();
     }
   }, [focused]);
+
+  /*
+   * The branch, for the status line. Read once per pane: a pane's cwd never changes
+   * under it, and polling git on a timer would be a cost paid forever for a value that
+   * moves a few times a day. It refreshes when a turn ends, which is when an agent is
+   * most likely to have changed it.
+   */
+  useEffect(() => {
+    const cwd = cwdRef.current;
+    if (cwd === undefined) {
+      return;
+    }
+    let cancelled = false;
+    void window.oikist.handoff
+      .state(cwd)
+      .then((working) => {
+        if (!cancelled) {
+          setBranch(working.branch === "" ? null : working.branch);
+        }
+      })
+      .catch(() => {
+        /* not a repository, or git is unavailable: the status line simply omits it */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [state.activity === "idle"]);
 
   /*
    * The draft is seeded from initial state above; this only retires the parent's copy.
@@ -217,6 +245,13 @@ export function AgentSessionPane({
         )}
         <div ref={tailRef} />
       </div>
+
+      <StatusLine
+        provider={provider}
+        state={state}
+        branch={branch}
+        {...(cwd === undefined ? {} : { cwd })}
+      />
 
       <div className="composer">
         {attachments.length > 0 && (
@@ -329,6 +364,70 @@ function Turn({
         )}
       </div>
     </article>
+  );
+}
+
+/** The trailing path segment — the part a person uses to say which project. */
+function leaf(path: string): string {
+  const parts = path.split(/[/\\]+/).filter((part) => part !== "");
+  return parts.at(-1) ?? path;
+}
+
+function compact(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`;
+  return String(tokens);
+}
+
+/**
+ * What the CLIs put at the bottom of their own screens, and oikist did not.
+ *
+ * Day 2: *"how the hell am I supposed to know what model I'm using, effort, thinking,
+ * usage?"* Everything here is published by the agent on its own stream. **Effort and a
+ * context percentage are absent because neither is published** — Claude Code computes
+ * its own `ctx 7%` internally and keeps it — and showing an estimate of either would be
+ * a status panel presenting a guess as a fact.
+ */
+function StatusLine({
+  provider,
+  state,
+  branch,
+  cwd
+}: {
+  readonly provider: "claude" | "codex";
+  readonly state: SessionState;
+  readonly branch: string | null;
+  readonly cwd?: string;
+}): React.JSX.Element {
+  const model = state.model === null ? provider : state.model.replace(/^claude-/, "");
+  const usage = state.limits;
+  return (
+    <div className="statusline">
+      <span className="statusline-model">{model}</span>
+      {state.permissionMode !== null && state.permissionMode !== "default" && (
+        <span className="statusline-mode">{state.permissionMode}</span>
+      )}
+      {cwd !== undefined && <span title={cwd}>{leaf(cwd)}</span>}
+      {branch !== null && <span className="statusline-branch">{branch}</span>}
+      {state.subagents.active > 0 && (
+        <span className="statusline-subagents">
+          {state.subagents.labels.join(", ")}
+        </span>
+      )}
+      {state.tokens !== null && (
+        <span title="tokens reported by the last turn">{compact(state.tokens)} tok</span>
+      )}
+      {state.thinkingTokens !== null && state.thinkingTokens > 0 && (
+        <span className="statusline-thinking" title="thinking tokens in the last turn">
+          thinking {compact(state.thinkingTokens)}
+        </span>
+      )}
+      {usage !== null && (
+        <span className="statusline-usage">
+          5h {Math.round(usage.fiveHour * 100)}% · 7d {Math.round(usage.sevenDay * 100)}%
+        </span>
+      )}
+    </div>
   );
 }
 

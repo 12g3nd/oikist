@@ -406,3 +406,54 @@ test("a result clears any subagent still marked running", () => {
   const state = feed([init(), agentCall("toolu_1", "Explore"), line({ type: "result", subtype: "success" })]);
   assert.equal(state.subagents.active, 0);
 });
+
+/*
+ * The status line. Day 2: "how the hell am I supposed to know what model I'm using,
+ * effort, thinking, usage?" — both CLIs show one and oikist showed none.
+ *
+ * Verified against a real run: `init` publishes `model` and `permissionMode` but **no
+ * effort field and no context-window size**, so those two are simply not shown rather
+ * than guessed at. `usage.output_tokens_details.thinking_tokens` is the one thinking
+ * signal that does exist.
+ */
+test("init records the permission mode the session is running under", () => {
+  const state = feed([init({ permissionMode: "acceptEdits" })]);
+  assert.equal(state.permissionMode, "acceptEdits");
+});
+
+test("result records total tokens and thinking tokens", () => {
+  const state = feed([
+    init(),
+    line({
+      type: "result",
+      subtype: "success",
+      usage: {
+        input_tokens: 12,
+        cache_creation_input_tokens: 48749,
+        cache_read_input_tokens: 100,
+        output_tokens: 40,
+        output_tokens_details: { thinking_tokens: 900 }
+      }
+    })
+  ]);
+  assert.equal(state.tokens, 12 + 48749 + 100 + 40, "every input path counts toward the total");
+  assert.equal(state.thinkingTokens, 900);
+});
+
+test("a result without usage leaves the token counts alone", () => {
+  const before = feed([init(), line({ type: "result", subtype: "success", usage: { input_tokens: 5, output_tokens: 5 } })]);
+  const after = reduceSession(before, line({ type: "result", subtype: "success" }));
+  assert.equal(after.tokens, 10, "a usage-less result must not zero the count");
+});
+
+test("codex records its token usage when a turn completes", () => {
+  const state = reduceCodex(
+    emptySession(),
+    codex({
+      type: "turn.completed",
+      usage: { input_tokens: 22271, cached_input_tokens: 12288, output_tokens: 5, reasoning_output_tokens: 40 }
+    })
+  );
+  assert.equal(state.tokens, 22271 + 12288 + 5);
+  assert.equal(state.thinkingTokens, 40, "reasoning tokens are Codex's thinking signal");
+});

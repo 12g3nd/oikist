@@ -52,6 +52,19 @@ export interface SessionState {
   readonly activity: SessionActivity;
   readonly statusDetail: string | null;
   readonly limits: SessionLimits | null;
+  /**
+   * What the CLI publishes about how it is running.
+   *
+   * Deliberately short. A real run showed `init` carries `model` and `permissionMode`
+   * and **no effort field and no context-window size** — Claude Code computes its own
+   * `ctx 7%` internally and does not put it on the stream. Those two are therefore
+   * absent from the status line rather than estimated, which hard rule 7 requires.
+   */
+  readonly permissionMode: string | null;
+  /** Every token path the last turn reported, summed. Null until a turn completes. */
+  readonly tokens: number | null;
+  /** From `usage.output_tokens_details.thinking_tokens` — the one thinking signal. */
+  readonly thinkingTokens: number | null;
   readonly subagents: SessionSubagents;
   /**
    * Tool-call ids of the running subagents, in start order.
@@ -71,6 +84,9 @@ export function emptySession(): SessionState {
     activity: "starting",
     statusDetail: null,
     limits: null,
+    permissionMode: null,
+    tokens: null,
+    thinkingTokens: null,
     subagents: { active: 0, labels: [] },
     subagentIds: []
   };
@@ -137,8 +153,26 @@ export function reduceCodex(state: SessionState, rawLine: string): SessionState 
     }
     case "turn.started":
       return { ...state, activity: "working" };
-    case "turn.completed":
-      return { ...state, activity: "idle" };
+    case "turn.completed": {
+      const usage = asRecord(event.usage);
+      // Codex names its fields differently from Claude — `cached_input_tokens` rather
+      // than two cache fields, `reasoning_output_tokens` rather than a nested details
+      // object — so the totals are summed here rather than by a shared helper that
+      // would have to know both vocabularies.
+      return {
+        ...state,
+        activity: "idle",
+        ...(usage === null
+          ? {}
+          : {
+              tokens:
+                countTokens(usage.input_tokens) +
+                countTokens(usage.cached_input_tokens) +
+                countTokens(usage.output_tokens),
+              thinkingTokens: countTokens(usage.reasoning_output_tokens)
+            })
+      };
+    }
     case "turn.failed": {
       const message = asString(asRecord(event.error)?.message);
       return {
@@ -285,6 +319,10 @@ function finishedSubagents(message: unknown): string[] {
   return done;
 }
 
+function countTokens(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
 function utilisation(window: unknown): number | null {
   const value = asRecord(window)?.utilization;
   return typeof value === "number" ? value : null;
@@ -317,6 +355,7 @@ export function reduceSession(state: SessionState, rawLine: string): SessionStat
       sessionId: asString(event.session_id) ?? state.sessionId,
       model: asString(event.model) ?? state.model,
       slashCommands: stringList(event.slash_commands),
+      permissionMode: asString(event.permissionMode) ?? state.permissionMode,
       activity: "working"
     };
   }
@@ -366,6 +405,20 @@ export function reduceSession(state: SessionState, rawLine: string): SessionStat
   }
 
   if (type === "result") {
+    const usage = asRecord(event.usage);
+    // Absent on some results. Keeping the previous figures beats zeroing them, which
+    // would read as "this turn was free".
+    const counted = usage === null
+      ? {}
+      : {
+          tokens:
+            countTokens(usage.input_tokens) +
+            countTokens(usage.cache_creation_input_tokens) +
+            countTokens(usage.cache_read_input_tokens) +
+            countTokens(usage.output_tokens),
+          thinkingTokens: countTokens(asRecord(usage.output_tokens_details)?.thinking_tokens)
+        };
+
     // A turn ended, so nothing it delegated is still running. A subagent left marked
     // active here would make the rail claim work that has stopped.
     const cleared = state.subagentIds.length === 0
@@ -373,9 +426,9 @@ export function reduceSession(state: SessionState, rawLine: string): SessionStat
       : { subagentIds: [], subagents: { active: 0, labels: [] } };
     // `needsAction` outranks the turn ending: the human is still owed something.
     if (state.activity === "needsAction") {
-      return state.subagentIds.length === 0 ? state : { ...state, ...cleared };
+      return { ...state, ...cleared, ...counted };
     }
-    return { ...state, ...cleared, activity: "idle" };
+    return { ...state, ...cleared, ...counted, activity: "idle" };
   }
 
   if (type === "rate_limit_event") {
