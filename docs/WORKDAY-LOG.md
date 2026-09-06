@@ -130,4 +130,56 @@ integration rather than on building it. **Either start the day after 03:39, or s
 before it and treat Codex as untested**, noting that the first Codex turn of the day is
 also the first unrehearsed one.
 
-- HH:MM · started · —
+**Ran 2026-09-06.** Six findings, in the author's words:
+
+1. **The windows feel rigid.** *"I miss the modularity of the window panes of Wave."*
+2. **The colour scheme should be orbit noir**, to match the desktop theme. *"I understand
+   the theme, but I want it a little more modern. I really miss how Wave looked — like
+   I'm a hacker, but this should make me look like a hacker, a little more glassy and
+   modern."*
+3. **No way to see what model is running.** *"How the hell am I supposed to know what
+   model I'm using, effort, thinking, usage?"* Both CLIs show a status line and oikist
+   shows none. Also: *"I miss how Wave lets me temporarily maximize a window."*
+4. **One project at a time**, and *"it feels clunky to set up."*
+5. **Too minimalistic.**
+6. **No built-in web browser.**
+
+### The shape of the verdict
+
+**Five of the six are "oikist is not Wave."** Rigid panes, the look, temporary maximize,
+one project at a time, and a web browser are all things Wave does and oikist deliberately
+does not. Section 1 chose greenfield over forking Wave; section 5 cut the tiling engine
+with the note *"add tiling later, against a working app, if it is ever actually missed."*
+It has now been actually missed, by name, on the first day of real use.
+
+**The criterion has named the wrong competitor twice.** Day 1 named Wave and lost the work
+to VS Code. Day 2 named VS Code — and the screenshots from the day show a Wave-style
+window with terminal/files/web/sysinfo/git/ports panes, plus lazygit. So the tool that
+won the day was not the one the bar was written against, again.
+
+That is worth more than any single item on the list: **a bar that has to be rewritten
+after every attempt is not measuring anything.** The next one should name *whatever gets
+opened instead*, without naming a product in advance.
+
+### What the record already says about each
+
+| finding | status in `DECISIONS.md` |
+|---|---|
+| rigid panes / tiling | **cut in section 5**, with an explicit "revisit if missed" clause. Fired. |
+| orbit noir, glassier | theming came off the fence 2026-09-05; the *direction* is new |
+| model / effort / usage | **not decided anywhere** — and mostly already in data oikist parses and discards |
+| temporary maximize | never considered |
+| one project at a time | **section 5's tab model assumed it**; never argued for |
+| too minimalistic | new, and the hardest to act on as stated |
+| web browser | **not on the fence at all** — new scope, and Wave-shaped |
+
+### The cheap one, worth naming separately
+
+Finding 3 is largely **already solved in data being thrown away**. `init` carries `model`
+and `permissionMode`; `rate_limit_event` carries both usage windows; `result` carries
+token usage. A status line per pane is mostly plumbing that already exists, not new
+capability — unlike tiling, multi-project or a browser, each of which is real work.
+
+**Verdict: not recorded yet.** The log demands passed or failed and the author has not
+said which. The findings read as a fail, and the screenshots suggest another tool won the
+day, but that is inference and the verdict is the author's to give.
