@@ -21,6 +21,28 @@ const SIZES = [256, 64, 48, 32, 24, 16];
 
 const MARK = [79, 199, 190]; // --accent
 
+/**
+ * A red copy of the rune, offset up and left behind the teal one.
+ *
+ * Not a stroke around the mark: an offset duplicate, so the red reads as a second
+ * printing slightly out of register rather than as a border. That is what makes it look
+ * deliberate instead of like a halo.
+ */
+const OUTLINE = [229, 52, 44];
+
+/** How far the red sits up and left, in the same normalised units as the geometry. */
+const OFFSET = 0.035;
+
+/**
+ * Below this, the mark stays one colour.
+ *
+ * At 24px the offset is half a pixel and at 16px it is a quarter, so the red stops being
+ * a second printing and becomes a dirty edge on a mark that has to be findable in a dark
+ * taskbar. Small faces are drawn rather than downscaled here precisely so they can make
+ * this kind of choice.
+ */
+const OUTLINE_MIN_SIZE = 32;
+
 /** Sub-samples per axis. 4 means 16 coverage tests per pixel, which is plenty here. */
 const SAMPLES = 4;
 
@@ -75,9 +97,13 @@ function inRune(x, y) {
 /** One RGBA raster at `size`, anti-aliased by super-sampling. */
 function render(size) {
   const pixels = Buffer.alloc(size * size * 4);
+  const outlined = size >= OUTLINE_MIN_SIZE;
+  const total = SAMPLES * SAMPLES;
+
   for (let py = 0; py < size; py += 1) {
     for (let px = 0; px < size; px += 1) {
       let hits = 0;
+      let redHits = 0;
       for (let sy = 0; sy < SAMPLES; sy += 1) {
         for (let sx = 0; sx < SAMPLES; sx += 1) {
           const x = (px + (sx + 0.5) / SAMPLES) / size;
@@ -85,16 +111,30 @@ function render(size) {
           if (inRune(x, y)) {
             hits += 1;
           }
+          // Sampling the rune *down and right* of here paints it up and left of where
+          // it would otherwise sit.
+          if (outlined && inRune(x + OFFSET, y + OFFSET)) {
+            redHits += 1;
+          }
         }
       }
-      if (hits === 0) {
+      if (hits === 0 && redHits === 0) {
         continue;
       }
+
+      // Teal over red, composited by coverage rather than drawn in two passes: at these
+      // sizes the seam between the two shapes is a pixel wide, and blending it is what
+      // keeps the red from fringing along every shared edge.
+      const tealAlpha = hits / total;
+      const redAlpha = (redHits / total) * (1 - tealAlpha);
+      const alpha = tealAlpha + redAlpha;
       const offset = (py * size + px) * 4;
-      pixels[offset] = MARK[0];
-      pixels[offset + 1] = MARK[1];
-      pixels[offset + 2] = MARK[2];
-      pixels[offset + 3] = Math.round((hits / (SAMPLES * SAMPLES)) * 255);
+      for (let channel = 0; channel < 3; channel += 1) {
+        pixels[offset + channel] = Math.round(
+          (MARK[channel] * tealAlpha + OUTLINE[channel] * redAlpha) / alpha
+        );
+      }
+      pixels[offset + 3] = Math.round(alpha * 255);
     }
   }
   return pixels;
